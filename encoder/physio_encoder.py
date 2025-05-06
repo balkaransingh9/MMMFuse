@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .encoder.pos_encoding import PositionalEncoding
+from .pos_encoding import PositionalEncoding
 
 # Unimodal EHR Encoder: includes a CLS token.
 class EHR_TSTEncoder(nn.Module):
