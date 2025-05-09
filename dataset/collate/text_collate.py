@@ -27,4 +27,4 @@ class TextCollate:
         # Stack labels into a single tensor
         labels = torch.stack(labels_list, dim=0)
 
-        return tokenized_text, labels
+        return {"x_data":tokenized_text, "labels":labels}

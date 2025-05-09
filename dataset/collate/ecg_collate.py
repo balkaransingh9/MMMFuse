@@ -25,5 +25,6 @@ class ECGCollate:
                                           device=ecg_lengths.device)[None, :] < ecg_lengths[:, None]
 
         attention_masks = {'ecg': ~ecg_attention_mask}
+        labels = torch.stack(labels_list, dim=0)
 
-        return ecg_pad, attention_masks
+        return {"x_data":ecg_pad, "attention_masks":attention_masks, "labels":labels}

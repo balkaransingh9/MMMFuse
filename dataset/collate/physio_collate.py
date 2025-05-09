@@ -29,4 +29,4 @@ class PhysioCollate:
         labels = torch.stack(labels_list, dim=0)
         attention_masks = {'physio': ~physio_attention_mask}
 
-        return physio_pad, attention_masks, labels
+        return {"x_data": physio_pad, "attention_masks": attention_masks, "labels": labels}
