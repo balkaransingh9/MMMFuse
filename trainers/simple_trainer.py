@@ -44,16 +44,16 @@ class SimpleTrainer(pl.LightningModule):
         loss = self.criterion(logits, labels)
         probs = torch.sigmoid(logits)
 
-        for name, metric in self.metrics.items():
+        for name, metric in self.test_metrics.items():
             metric.update(probs, labels.int())
             self.log(f"test_{name}", metric.compute(), prog_bar=True)
         
         self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return {"logits": logits, "labels": labels}
     
-    def test_epoch_end(self, outputs):
+    def on_test_epoch_end(self, outputs):
         print("\n Final Results: \n")
-        for name, metric in self.metrics.items():
+        for name, metric in self.test_metrics.items():
             score = metric.compute()
             print(f"{name}: {score:.4f}")
             metric.reset()
