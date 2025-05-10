@@ -14,7 +14,7 @@ class SimpleTrainer(pl.LightningModule):
         weight_decay: float = 1e-5, 
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=['model', 'criterion', 'optimizer'])        
+        self.save_hyperparameters(ignore=['model', 'criterion', 'optimizer', 'test_metrics'])        
         self.model     = model
         self.criterion = criterion
         self._external_optimizer = optimizer
