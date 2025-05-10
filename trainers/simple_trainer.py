@@ -52,7 +52,7 @@ class SimpleTrainer(pl.LightningModule):
         self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return {"logits": logits, "labels": labels}
     
-    def on_test_epoch_end(self, outputs):
+    def on_test_epoch_end(self):
         print("\n Final Results: \n")
         for name, metric in self.test_metrics.items():
             score = metric.compute()
