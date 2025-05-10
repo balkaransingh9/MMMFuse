@@ -1,6 +1,7 @@
 import torch
 import pytorch_lightning as pl
 from torch.optim import Optimizer
+import torch.nn as nn
 
 class SimpleTrainer(pl.LightningModule):
     def __init__(
@@ -8,7 +9,7 @@ class SimpleTrainer(pl.LightningModule):
         model: torch.nn.Module,
         criterion: torch.nn.Module,
         optimizer: Optimizer = None,
-        test_metrics = None,
+        test_metrics: dict = None,
         lr: float = 1e-4,
         weight_decay: float = 1e-5, 
     ):
@@ -17,7 +18,7 @@ class SimpleTrainer(pl.LightningModule):
         self.model     = model
         self.criterion = criterion
         self._external_optimizer = optimizer
-        self.test_metrics = test_metrics
+        self.test_metrics = nn.ModuleDict(test_metrics)
 
     def forward(self, **batch):
         return self.model(**batch)
