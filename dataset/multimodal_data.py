@@ -4,7 +4,8 @@ import lmdb
 from io import BytesIO
 
 class MM_EHR(Dataset):
-  def __init__(self, list_file, split = 'train', normaliser_physio = None, normaliser_ecg = None,
+  def __init__(self, list_file, task_type = 'phenotype', split = 'train', 
+               normaliser_physio = None, normaliser_ecg = None,
                lmdb_path_physio='none', lmdb_path_ecg='none', lmdb_path_text='none'):
     self.list_file = list_file
     self.split = split
@@ -14,8 +15,16 @@ class MM_EHR(Dataset):
     if split == 'test':
       self.data_split = self.list_file[self.list_file['original_split'] == 'test'].reset_index(drop=True)
 
-    extra_cols = ['subject_id', 'stay', 'period_length', 'stay_id', 'original_split', 'ecg_path']
-    self.sample_labels = torch.tensor(self.data_split.drop(extra_cols, axis=1).values).float()
+    if task_type == 'phenotype':
+      extra_cols = ['subject_id', 'stay', 'period_length', 'stay_id', 'original_split', 'ecg_path']
+      self.sample_labels = torch.tensor(self.data_split.drop(extra_cols, axis=1).values).float()
+    elif task_type == 'in_hospital_mortality':
+      self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
+    elif task_type == 'length_of_stay':
+      self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
+    else:
+      raise ValueError("Unsupported task type!")      
+    
     self.sample_keys = [i.split(".")[0].encode('utf-8') for i in self.data_split['stay'].values]
     self.sample_keys_text = [str(i).encode('utf-8') for i in self.data_split['stay_id'].values]
 
