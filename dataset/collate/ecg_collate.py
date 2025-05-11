@@ -2,11 +2,18 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 class ECGCollate:
-    def __init__(self):
+    def __init__(self, task_type='phentype'):
         """
         Collate class for ECG data batching.
         """
-        pass
+        if task_type == 'phentype':
+            self.task_type = task_type
+        elif task_type == 'in_hospital_mortality':
+            self.task_type = task_type
+        elif task_type == 'length_of_stay':
+            self.task_type = task_type
+        else:
+            raise ValueError("Unsupported task type!")
 
     def __call__(self, batch):
         ecg_list, labels_list = zip(*batch)
@@ -25,6 +32,10 @@ class ECGCollate:
                                           device=ecg_lengths.device)[None, :] < ecg_lengths[:, None]
 
         attention_masks = {'ecg': ~ecg_attention_mask}
-        labels = torch.stack(labels_list, dim=0)
+
+        if self.task_type == 'length_of_stay':
+            labels = torch.tensor(labels_list)
+        else:
+            labels = torch.stack(labels_list, dim=0)
 
         return {"x_data":ecg_pad, "attention_masks":attention_masks, "labels":labels}
