@@ -6,7 +6,7 @@ class PhysioCollate:
         """
         Collate function class for physiological data only.
         """
-        if task_type == 'phentype':
+        if task_type == 'phenotype':
             self.task_type = task_type
         elif task_type == 'in_hospital_mortality':
             self.task_type = task_type
