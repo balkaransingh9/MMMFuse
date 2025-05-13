@@ -65,7 +65,7 @@ class UnimodalDataModule(pl.LightningDataModule):
         if stage in (None, 'test'):
             if self.modality == 'physio':
                 self.test_ds = PhysioData(self.listfile, task_type=self.task_type, split='test',
-                                           normaliser=self.normaliser, lmdb_path=self.lmdb_path)
+                                           normaliser_physio=self.normaliser, lmdb_path=self.lmdb_path)
             if self.modality == 'ecg':
                 self.test_ds = ECGData(self.listfile, task_type=self.task_type, split='test',
                                         normaliser_ecg=self.normaliser, lmdb_path_ecg=self.lmdb_path)
@@ -96,7 +96,7 @@ class UnimodalDataModule(pl.LightningDataModule):
 For Multimodal Data
 """
 class MultimodalDataModule(pl.LightningDataModule):
-    def __init__(self, listfile, task_type='phenotype',
+    def __init__(self, listfile, task_type='phenotype', modalities = ['physio','ecg','text'],
                  lmdb_path_physio = '', lmdb_path_ecg = '', 
                  lmdb_path_text = '', normaliser_physio = None, 
                  normaliser_ecg = None, batch_size=64, num_workers=4):
@@ -138,7 +138,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                            normaliser_physio=self.normaliser_physio, normaliser_ecg=self.normaliser_ecg, 
                                            lmdb_path_physio=self.lmdb_path_physio, lmdb_path_ecg=self.lmdb_path_ecg,
                                            lmdb_path_text=self.lmdb_path_text)
-            
+
     def train_dataloader(self):
         return DataLoader(
             self.train_ds,
