@@ -2,7 +2,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 class MultimodalCollate:
-    def __init__(self, tokenizer, max_len=512):
+    def __init__(self, tokenizer, max_len=512, task_type='phenotype'):
         """
         Collate class for multimodal data (physio, ECG, text).
         
@@ -12,6 +12,15 @@ class MultimodalCollate:
         """
         self.tokenizer = tokenizer
         self.max_len = max_len
+        
+        if task_type == 'phenotype':
+            self.task_type = task_type
+        elif task_type == 'in_hospital_mortality':
+            self.task_type = task_type
+        elif task_type == 'length_of_stay':
+            self.task_type = task_type
+        else:
+            raise ValueError("Unsupported task type!")
 
     def __call__(self, batch):
         physio_list, ecg_list, text_list, missing_flag_list, labels_list = zip(*batch)
@@ -43,8 +52,7 @@ class MultimodalCollate:
             return_tensors='pt'
         )
 
-        # === Labels & masks ===
-        labels = torch.stack(labels_list, dim=0)
+        # === Masks ===
         attention_masks = {'physio': ~physio_attention_mask, 'ecg': ~ecg_attention_mask}
 
         missing_mod_mask = torch.stack([
@@ -52,5 +60,13 @@ class MultimodalCollate:
             (~torch.tensor([f['ecg_missing']    for f in missing_flag_list], dtype=torch.bool)),
             (~torch.tensor([f['text_missing']   for f in missing_flag_list], dtype=torch.bool)),
         ], dim=1).float()  # [B, 3]
+
+        # === Labels ===
+        if self.task_type == 'phenotype':
+            labels = torch.stack(labels_list, dim=0)
+        elif self.task_type == 'in_hospital_mortality':
+            labels = torch.tensor(labels_list).unsqueeze(1)
+        else:
+            labels = torch.tensor(labels_list).long()
 
         return physio_pad, ecg_pad, tokenized_text, attention_masks, missing_mod_mask, labels

@@ -2,7 +2,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 class PhysioCollate:
-    def __init__(self,  task_type='phentype'):
+    def __init__(self,  task_type='phenotype'):
         """
         Collate function class for physiological data only.
         """
@@ -33,10 +33,12 @@ class PhysioCollate:
         physio_attention_mask = torch.arange(physio_max_len,
                                              device=physio_lengths.device)[None, :] < physio_lengths[:, None]
 
-        if self.task_type == 'length_of_stay':
-            labels = torch.tensor(labels_list)
-        else:
+        if self.task_type == 'phenotype':
             labels = torch.stack(labels_list, dim=0)
+        elif self.task_type == 'in_hospital_mortality':
+            labels = torch.tensor(labels_list).unsqueeze(1)
+        else:
+            labels = torch.tensor(labels_list).long()
 
         attention_masks = {'physio': ~physio_attention_mask}
         #return {"x_data": physio_pad, "attention_masks": attention_masks, "labels": labels}

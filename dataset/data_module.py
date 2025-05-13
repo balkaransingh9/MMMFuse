@@ -21,7 +21,7 @@ class UnimodalDataModule(pl.LightningDataModule):
         self.listfile = listfile
         self.normaliser = normaliser
         self.lmdb_path = lmdb_path
-        
+
         if task_type == 'phenotype':
             self.task_type = task_type
         elif task_type == 'in_hospital_mortality':
@@ -33,13 +33,13 @@ class UnimodalDataModule(pl.LightningDataModule):
 
         if modality == 'physio':
             self.modality = modality
-            self.collate_fn = PhysioCollate()
+            self.collate_fn = PhysioCollate(task_type=self.task_type)
         elif modality == 'ecg':
             self.modality = modality
-            self.collate_fn = ECGCollate()
+            self.collate_fn = ECGCollate(task_type=self.task_type)
         elif modality == 'text':
             self.modality = modality
-            self.collate_fn = TextCollate()
+            self.collate_fn = TextCollate(task_type=self.task_type)
         else:
             raise ValueError("Modality not supported!")
 
@@ -146,7 +146,7 @@ class MultimodalDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=MultimodalCollate()
+            collate_fn=MultimodalCollate(task_type=self.task_type)
         )
 
     def test_dataloader(self):
@@ -156,6 +156,6 @@ class MultimodalDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=MultimodalCollate()
+            collate_fn=MultimodalCollate(task_type=self.task_type)
         )
 

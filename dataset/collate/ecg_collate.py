@@ -2,7 +2,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 class ECGCollate:
-    def __init__(self, task_type='phentype'):
+    def __init__(self, task_type='phenotype'):
         """
         Collate class for ECG data batching.
         """
@@ -33,9 +33,11 @@ class ECGCollate:
 
         attention_masks = {'ecg': ~ecg_attention_mask}
 
-        if self.task_type == 'length_of_stay':
-            labels = torch.tensor(labels_list)
-        else:
+        if self.task_type == 'phenotype':
             labels = torch.stack(labels_list, dim=0)
+        elif self.task_type == 'in_hospital_mortality':
+            labels = torch.tensor(labels_list).unsqueeze(1)
+        else:
+            labels = torch.tensor(labels_list).long()
 
         return {"x_data":ecg_pad, "attention_masks":attention_masks, "labels":labels}
