@@ -1,7 +1,7 @@
 import torch
 
 class TextCollate:
-    def __init__(self, tokenizer, max_len=512):
+    def __init__(self, tokenizer, max_len=250):
         """
         Collate class for tokenizing text data and batching labels.
 

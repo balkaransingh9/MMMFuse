@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from encoder.pos_encoding import PositionalEncoding
+from .pos_encoding import PositionalEncoding
 
 class TSTModelECG_Patched(nn.Module):
     def __init__(self, input_dim, patch_size, model_dim=64, max_time_len=5000,

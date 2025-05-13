@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import lmdb
 from io import BytesIO
 
-class physio_Data(Dataset):
+class PhysioData(Dataset):
   def __init__(self, list_file, task_type='phenotype', split = 'train', 
                normaliser_physio = None, lmdb_path_physio='none'):
     self.list_file = list_file
@@ -30,9 +30,10 @@ class physio_Data(Dataset):
     self.m_physio = normaliser_physio['mean']
     self.stds_physio = normaliser_physio['std']
 
-    self.env_lmdb_data_physio = lmdb.open(lmdb_path_physio, readonly=True, lock=False)
+    self.lmdb_path_physio = lmdb_path_physio
+    self.env_lmdb_data_physio = None
 
-  def normaliser_physio(self, input):
+  def _normaliser_physio(self, input):
     norm = (input - self.m_physio)/self.stds_physio
     return norm
 
@@ -41,11 +42,14 @@ class physio_Data(Dataset):
 
   def __getitem__(self, idx):
     #loading physio data
-    with self.env_lmdb_data_physio.begin(write=False) as txn:
-      retrieved_bytes = txn.get(self.sample_keys[idx])
-      if retrieved_bytes is not None:
-        buffer = BytesIO(retrieved_bytes)
-        loaded_data = torch.load(buffer, weights_only=True)
-        normalised_sample_physio = self.normaliser_physio(loaded_data['sample'])
+    if self.env_lmdb_data_physio == None:
+      self.env_lmdb_data_physio = lmdb.open(self.lmdb_path_physio, readonly=True, lock=False)
+      self.txn_data_physio = self.env_lmdb_data_physio.begin(write=False)
+
+    retrieved_bytes = self.txn_data_physio.get(self.sample_keys[idx])
+    if retrieved_bytes is not None:
+      buffer = BytesIO(retrieved_bytes)
+      loaded_data = torch.load(buffer, weights_only=True)
+      normalised_sample_physio = self._normaliser_physio(loaded_data['sample'])
 
     return normalised_sample_physio, self.sample_labels[idx]

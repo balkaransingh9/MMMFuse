@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import lmdb
 
-class text_Data(Dataset):
+class TextData(Dataset):
   def __init__(self, list_file, task_type = 'phenotype', split = 'train', lmdb_path_text='none'):
     self.list_file = list_file
     self.split = split
@@ -25,16 +25,20 @@ class text_Data(Dataset):
     self.sample_keys = [i.split(".")[0].encode('utf-8') for i in self.data_split['stay'].values]
     self.sample_keys_text = [str(i).encode('utf-8') for i in self.data_split['stay_id'].values]
 
-    self.env_lmdb_data_text = lmdb.open(lmdb_path_text, readonly=True, lock=False)
+    self.lmdb_path_text = lmdb_path_text
+    self.env_lmdb_data_text = None
 
   def __len__(self):
     return len(self.data_split)
 
   def __getitem__(self, idx):
     #loading text data
-    with self.env_lmdb_data_text.begin(write=False) as txn:
-      text_bytes = txn.get(self.sample_keys_text[idx])
-      if text_bytes is not None:
-        text = text_bytes.decode('utf-8')
+    if self.env_lmdb_data_text == None:
+      self.env_lmdb_data_text = lmdb.open(self.lmdb_path_text, readonly=True, lock=False)
+      self.txn_data_text = self.env_lmdb_data_text.begin(write=False)
+
+    text_bytes = self.txn_data_text.get(self.sample_keys_text[idx])
+    if text_bytes is not None:
+      text = text_bytes.decode('utf-8')
 
     return text, self.sample_labels[idx]

@@ -8,7 +8,11 @@ def welford_update(curr_sample, n_old, m_old, s_old):
   s_new = s_old + ((curr_sample - m_new) * (curr_sample - m_old)).sum(axis=0)
   return n_new, m_new, s_new
 
-def normaliser(train_samples, lmdb_env, ftype_data):  
+def normaliser(listfile, split_col='original_split', lmdb_env=None, ftype_data=None):
+
+    listfile_train = listfile[listfile[split_col] == 'train']
+    train_samples = [i.split(".")[0].encode('utf-8') for i in listfile_train['stay']]
+
     n, m, s = 0, 0, 0
     for sample in tqdm(train_samples):
         with lmdb_env.begin(write=False) as txn:
