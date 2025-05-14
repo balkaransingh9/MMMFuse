@@ -21,7 +21,6 @@ class MetricFactory:
         elif self.task_type == "multiclass":
             return {
                 "AUROC Macro": tmc.MulticlassAUROC(num_classes=self.num_labels, average="macro"),
-                "AUROC Micro": tmc.MulticlassAUROC(num_classes=self.num_labels, average="micro"),
                 "AUROC Weighted": tmc.MulticlassAUROC(num_classes=self.num_labels, average="weighted"),
                 "Precision": tmc.MulticlassPrecision(num_classes=self.num_labels, average=self.average),
                 "Recall": tmc.MulticlassRecall(num_classes=self.num_labels, average=self.average),

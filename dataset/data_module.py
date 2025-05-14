@@ -54,7 +54,7 @@ class UnimodalDataModule(pl.LightningDataModule):
         if stage in (None, 'fit'):
             if self.modality == 'physio':
                 self.train_ds = PhysioData(self.listfile, task_type=self.task_type, split='train',
-                                           normaliser=self.normaliser, lmdb_path=self.lmdb_path)
+                                           normaliser_physio=self.normaliser, lmdb_path_physio=self.lmdb_path)
             if self.modality == 'ecg':
                 self.train_ds = ECGData(self.listfile, task_type=self.task_type, split='train',
                                         normaliser_ecg=self.normaliser, lmdb_path_ecg=self.lmdb_path)
@@ -65,7 +65,7 @@ class UnimodalDataModule(pl.LightningDataModule):
         if stage in (None, 'test'):
             if self.modality == 'physio':
                 self.test_ds = PhysioData(self.listfile, task_type=self.task_type, split='test',
-                                           normaliser_physio=self.normaliser, lmdb_path=self.lmdb_path)
+                                           normaliser_physio=self.normaliser, lmdb_path_physio=self.lmdb_path)
             if self.modality == 'ecg':
                 self.test_ds = ECGData(self.listfile, task_type=self.task_type, split='test',
                                         normaliser_ecg=self.normaliser, lmdb_path_ecg=self.lmdb_path)

@@ -1,6 +1,6 @@
 from io import BytesIO
 import torch
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 def welford_update(curr_sample, n_old, m_old, s_old):
   n_new = n_old + len(curr_sample)
