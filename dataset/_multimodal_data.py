@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 import lmdb
 from io import BytesIO
+import pickle
 
 class MultimodalData(Dataset):
     def __init__(
@@ -9,6 +10,7 @@ class MultimodalData(Dataset):
         list_file,
         modalities,               # e.g. ['physio','ecg','text'] or ['physio','medicine','text']
         task_type='phenotype',
+        split='train',
         normaliser_physio=None,
         normaliser_ecg=None,
         normaliser_medicine=None,
@@ -20,7 +22,7 @@ class MultimodalData(Dataset):
         self.list_file      = list_file
         self.modalities     = modalities
         self.task_type      = task_type
-        self.split          = list_file  # assume `list_file` has an 'original_split' column
+        self.split          = split  # assume `list_file` has an 'original_split' column
 
         # split the DataFrame
         if self.split == 'train':
@@ -37,7 +39,7 @@ class MultimodalData(Dataset):
 
         # keys for LMDB
         self.sample_keys = [s.split('.')[0].encode('utf-8') for s in self.data_split['stay'].astype(str)]
-        self.sample_keys_text = [s.encode('utf-8') for s in self.data_split['stay_id'].astype(str)]
+        self.sample_keys_sid = [s.encode('utf-8') for s in self.data_split['stay_id'].astype(str)]
 
         # normaliser params
         if 'physio' in modalities:
@@ -98,16 +100,14 @@ class MultimodalData(Dataset):
 
     def _load_medicine(self, idx):
         self._open_env('medicine')
-        raw = self.envs['medicine_txn'].get(self.sample_keys[idx])
+        raw = self.envs['medicine_txn'].get(self.sample_keys_sid[idx])
         if raw is None:
             return None, True
-        buf = BytesIO(raw)
-        data = torch.load(buf, weights_only=True)['medicine']
-        return (data - self.m_med) / self.s_med, False
+        return pickle.loads(raw), False
 
     def _load_text(self, idx):
         self._open_env('text')
-        raw = self.envs['text_txn'].get(self.sample_keys_text[idx])
+        raw = self.envs['text_txn'].get(self.sample_keys_sid[idx])
         if raw is None:
             return "", True
         return raw.decode('utf-8'), False
