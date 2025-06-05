@@ -13,7 +13,6 @@ class MultimodalData(Dataset):
         split='train',
         normaliser_physio=None,
         normaliser_ecg=None,
-        normaliser_medicine=None,
         lmdb_path_physio='none',
         lmdb_path_ecg='none',
         lmdb_path_text='none',
@@ -46,8 +45,6 @@ class MultimodalData(Dataset):
             self.m_physio, self.s_physio = normaliser_physio['mean'], normaliser_physio['std']
         if 'ecg'   in modalities:
             self.m_ecg,   self.s_ecg   = normaliser_ecg['mean'],   normaliser_ecg['std']
-        if 'medicine' in modalities:
-            self.m_med,   self.s_med   = normaliser_medicine['mean'], normaliser_medicine['std']
 
         # LMDB paths + env stubs
         self.lmdb_paths = {
