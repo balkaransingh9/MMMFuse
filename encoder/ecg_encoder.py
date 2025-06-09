@@ -19,8 +19,10 @@ class TSTModelECG_Patched(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
         self.dropout = nn.Dropout(0.2)
 
-    def forward(self, x):
+    def forward(self, input):
         # x: [batch, seq_len, input_dim]
+        x = input['pad']
+
         batch_size, seq_len, _ = x.shape
         # Pad if needed
         if seq_len % self.patch_size != 0:

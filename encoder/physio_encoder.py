@@ -17,8 +17,10 @@ class EHR_TSTEncoder(nn.Module):
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
         self.dropout = nn.Dropout(0.2)
 
-    def forward(self, x, masks):
+    def forward(self, input):
         # x: [batch, seq_len, input_dim]
+        x = input['pad']
+        masks = input['attention_mask']
         x = self.in_projection(x) * math.sqrt(self.model_dim)
 
         cls_tokens = self.cls_token.expand(x.shape[0], -1, -1)

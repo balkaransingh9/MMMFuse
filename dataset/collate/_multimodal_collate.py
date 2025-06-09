@@ -26,38 +26,45 @@ class MultimodalCollate:
 
         if task_type not in ['phenotype', 'in_hospital_mortality', 'length_of_stay']:
             raise ValueError(f"Unsupported task type: {task_type}")
-        self.task_type = task_type
-
-        self.modalities     = modalities
-        self.text_tok       = text_tokenizer
-        self.med_tok        = med_tokenizer
-        self.text_max_len   = text_max_len
-        self.med_max_len    = med_max_len
-        self.text_kwargs    = text_kwargs or {}
-        self.med_kwargs     = med_kwargs  or {}
+        self.task_type    = task_type
+        self.modalities   = modalities
+        self.text_tok     = text_tokenizer
+        self.med_tok      = med_tokenizer
+        self.text_max_len = text_max_len
+        self.med_max_len  = med_max_len
+        self.text_kwargs  = text_kwargs or {}
+        self.med_kwargs   = med_kwargs  or {}
 
     def __call__(self, batch):
         outs_list, flags_list, labels_list = zip(*batch)
 
-        # 1) Sequence modalities
-        seq_data  = {}
-        seq_masks = {}
+        # 1) Sequence modalities → now nested dicts
+        seq_data = {}
         for mod in self.modalities:
+            # skip non‐sequence modalities
             if mod in ('text', 'medicine'):
                 continue
 
+            # find feature‐dim
             dim = next((o[mod].shape[1] for o in outs_list if o[mod] is not None), None)
+            # replace missing with zeros
             seqs = [
-                o[mod] if o[mod] is not None else torch.zeros((1, dim))
+                o[mod] if o[mod] is not None else torch.zeros((1, dim), device=o[next(iter(o))].device)
                 for o in outs_list
             ]
-            padded = pad_sequence(seqs, batch_first=True).float()
-            lengths = torch.tensor([s.size(0) for s in seqs], device=padded.device)
-            maxl    = lengths.max()
-            att     = torch.arange(maxl, device=lengths.device)[None, :] < lengths[:, None]
 
-            seq_data[f"{mod}_pad"] = padded
-            seq_masks[mod]         = ~att
+            # pad
+            padded = pad_sequence(seqs, batch_first=True).float()
+            # build attention mask: True=​keep, False=pad
+            lengths = torch.tensor([s.size(0) for s in seqs], device=padded.device)
+            max_len = lengths.max()
+            attn    = torch.arange(max_len, device=lengths.device)[None, :] < lengths[:, None]
+
+            # store both under the modality key
+            seq_data[mod] = {
+                'pad': padded,
+                'attention_mask': ~attn
+            }
 
         # 2) Text modality
         if 'text' in self.modalities:
@@ -72,15 +79,18 @@ class MultimodalCollate:
             )
             seq_data['text'] = tokenized
 
-        # 3) Med modality
+        # 3) Medicine modality
         if 'medicine' in self.modalities:
             meds = [o['medicine'] for o in outs_list]
-            med_tokenized = self.med_tok.tokenize(meds)
+            med_tokenized = self.med_tok.tokenize(meds, **self.med_kwargs)
             seq_data['medicine'] = med_tokenized
 
-        # 4) Missing-modality mask
+        # 4) Missing‐modality mask
         miss_mask = torch.stack([
-            (~torch.tensor([f.get(f"{mod}_missing", True) for f in flags_list], dtype=torch.bool))
+            (~torch.tensor(
+                [f.get(f"{mod}_missing", True) for f in flags_list],
+                dtype=torch.bool
+            ))
             for mod in self.modalities
         ], dim=1).float()
 
@@ -89,7 +99,7 @@ class MultimodalCollate:
             labels = torch.stack(labels_list, dim=0)
         elif self.task_type == 'in_hospital_mortality':
             labels = torch.tensor(labels_list, dtype=torch.float32).unsqueeze(1)
-        else:  # 'length_of_stay'
+        else:  # length_of_stay
             labels = torch.tensor(labels_list, dtype=torch.long)
 
-        return seq_data, seq_masks, miss_mask, labels
+        return seq_data, miss_mask, labels
