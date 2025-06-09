@@ -92,7 +92,7 @@ class MultimodalData(Dataset):
         if raw is None:
             return None, True
         buf = BytesIO(raw)
-        data = torch.load(buf, weights_only=True)
+        data = torch.load(buf, weights_only=True)['sample']
         return (data - self.m_ecg) / self.s_ecg, False
 
     def _load_medicine(self, idx):
