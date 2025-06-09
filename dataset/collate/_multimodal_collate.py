@@ -43,7 +43,7 @@ class MultimodalCollate:
         seq_data  = {}
         seq_masks = {}
         for mod in self.modalities:
-            if mod in ('text', 'med'):
+            if mod in ('text', 'medicine'):
                 continue
 
             dim = next((o[mod].shape[1] for o in outs_list if o[mod] is not None), None)
@@ -73,10 +73,10 @@ class MultimodalCollate:
             seq_data['text'] = tokenized
 
         # 3) Med modality
-        if 'med' in self.modalities:
-            meds = [o['med'] for o in outs_list]
+        if 'medicine' in self.modalities:
+            meds = [o['medicine'] for o in outs_list]
             med_tokenized = self.med_tok.tokenize(meds)
-            seq_data['med'] = med_tokenized
+            seq_data['medicine'] = med_tokenized
 
         # 4) Missing-modality mask
         miss_mask = torch.stack([

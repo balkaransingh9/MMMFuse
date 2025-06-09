@@ -165,7 +165,7 @@ class MultimodalDataModule(pl.LightningDataModule):
             pin_memory=True,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
-                                         med_tokenizer=self.text_tokenizer,
+                                         med_tokenizer=self.med_tokenizer,
                                          task_type=self.task_type)
         )
 
@@ -178,6 +178,6 @@ class MultimodalDataModule(pl.LightningDataModule):
             pin_memory=True,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
-                                         med_tokenizer=self.text_tokenizer,
+                                         med_tokenizer=self.med_tokenizer,
                                          task_type=self.task_type)
         )
