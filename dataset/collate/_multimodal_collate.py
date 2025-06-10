@@ -102,4 +102,4 @@ class MultimodalCollate:
         else:  # length_of_stay
             labels = torch.tensor(labels_list, dtype=torch.long)
 
-        return seq_data, miss_mask, labels
+        return {"inputs":seq_data, "present_mask":miss_mask, "labels":labels}
