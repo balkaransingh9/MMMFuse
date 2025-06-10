@@ -11,7 +11,8 @@ class MultimodalTransformerFusion(nn.Module):
         fused_dim: int = 128,
         num_heads: int = 4,
         num_layers: int = 2,
-        dropout: float = 0.1
+        dropout: float = 0.1,
+        num_classes: int = 25
     ):
         """
         Args:
@@ -31,8 +32,10 @@ class MultimodalTransformerFusion(nn.Module):
             for m in self.modalities
         })
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, common_dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, len(self.modalities) + 1, common_dim))
+        self.cls_token = nn.Parameter(torch.empty(1, 1, common_dim))
+        self.pos_embed = nn.Parameter(torch.empty(1, len(self.modalities) + 1, common_dim))
+        nn.init.trunc_normal_(self.cls_token, std=0.02)
+        nn.init.trunc_normal_(self.pos_embed, std=0.02)
 
         layer = nn.TransformerEncoderLayer(
             d_model=common_dim,
@@ -45,8 +48,7 @@ class MultimodalTransformerFusion(nn.Module):
         self.norm = nn.LayerNorm(common_dim)
         self.fusion_head = nn.Linear(common_dim, fused_dim)
 
-        nn.init.trunc_normal_(self.cls_token, std=0.02)
-        nn.init.trunc_normal_(self.pos_embed, std=0.02)
+        self.classifier = nn.Linear(fused_dim, num_classes)
 
     def forward(self, inputs: dict, present_mask: torch.Tensor):
         """
@@ -81,4 +83,7 @@ class MultimodalTransformerFusion(nn.Module):
 
         # pool from CLS
         cls_out = self.norm(x[:,0])               # [B,common_dim]
-        return F.relu(self.fusion_head(cls_out))  # [B,fused_dim]
+        cls_out = self.fusion_head(cls_out)
+        cls_out = F.relu(cls_out)
+        cls_out = self.classifier(cls_out)
+        return cls_out
