@@ -6,8 +6,8 @@ class MedEncoder(nn.Module):
     def __init__(
         self, label_vocab_size=263, unit_vocab_size=8, category_vocab_size=17, 
         label_emb_dim=16, unit_emb_dim=16, category_emb_dim=8, hours_emb_dim=8, value_emb_dim=8,
-        d_model=128, nhead=8, num_layers=4, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500
-        ):
+        d_model=128, nhead=8, num_layers=4, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500,
+        return_cls=True):
         super().__init__()
 
         self.label_emb = nn.Embedding(label_vocab_size, label_emb_dim, padding_idx=pad_idx)
@@ -33,6 +33,8 @@ class MedEncoder(nn.Module):
 
         # Padding index for mask
         self.pad_idx = pad_idx
+        self.return_cls = return_cls
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x: dict):
         # x: dict with keys 'hours', 'value', 'label', 'unit', 'category'
@@ -67,7 +69,11 @@ class MedEncoder(nn.Module):
 
         # Add positional encoding
         x_pos = self.pos_enc(x_proj)
-
         # Transformer encoding
-        output = self.transformer(x_pos, src_key_padding_mask=pad_mask)
-        return output
+        x = self.transformer(x_pos, src_key_padding_mask=pad_mask)
+        x = self.dropout(x)
+
+        if self.return_cls == True:
+            return x[:, 0, :]
+        else:
+            return x

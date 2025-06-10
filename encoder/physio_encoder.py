@@ -6,7 +6,7 @@ from .pos_encoding import PositionalEncoding
 # Unimodal EHR Encoder: includes a CLS token.
 class EHR_TSTEncoder(nn.Module):
     def __init__(self, input_dim, model_dim=64, max_time_len=4000,
-                 nhead=2, ff_dim=128, nlayers=2, dropout=0.3):
+                 nhead=2, ff_dim=128, nlayers=2, dropout=0.3, return_cls=True):
         super(EHR_TSTEncoder, self).__init__()
         self.model_dim = model_dim
         self.in_projection = nn.Linear(input_dim, model_dim)
@@ -16,6 +16,7 @@ class EHR_TSTEncoder(nn.Module):
                                                     activation='relu', batch_first=True, dropout=dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
         self.dropout = nn.Dropout(0.2)
+        self.return_cls = return_cls
 
     def forward(self, input):
         # x: [batch, seq_len, input_dim]
@@ -32,4 +33,9 @@ class EHR_TSTEncoder(nn.Module):
 
         x = self.transformer_encoder(x, src_key_padding_mask=masks)
         x = self.dropout(x)
-        return x  # Full sequence: CLS + token embeddings
+
+        if self.return_cls == True:
+            return x[:, 0, :]  # return just CLS
+        else:
+            return x  # Full sequence: CLS + token embeddings
+    

@@ -4,7 +4,7 @@ from .pos_encoding import PositionalEncoding
 
 class TSTModelECG_Patched(nn.Module):
     def __init__(self, input_dim, patch_size, model_dim=64, max_time_len=5000,
-                 nhead=4, ff_dim=128, nlayers=3, dropout=0.3):
+                 nhead=4, ff_dim=128, nlayers=3, dropout=0.3, return_cls = True):
         super(TSTModelECG_Patched, self).__init__()
         assert max_time_len % patch_size == 0, "max_time_len must be divisible by patch_size"
         self.patch_size = patch_size
@@ -18,6 +18,8 @@ class TSTModelECG_Patched(nn.Module):
                                                     activation='relu', batch_first=True, dropout=dropout)
         self.transformer_encoder = nn.TransformerEncoder(encoder_layer, num_layers=nlayers)
         self.dropout = nn.Dropout(0.2)
+        
+        self.return_cls = return_cls
 
     def forward(self, input):
         # x: [batch, seq_len, input_dim]
@@ -39,4 +41,8 @@ class TSTModelECG_Patched(nn.Module):
         x = self.pos_encoding(x)
         x = self.transformer_encoder(x)
         x = self.dropout(x)
-        return x  # Full sequence: CLS + token embeddings
+
+        if self.return_cls == True:
+            return x[:, 0, :] #return just CLS
+        else:
+            return x  # Full sequence: CLS + token embeddings
