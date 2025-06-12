@@ -5,8 +5,8 @@ from .pos_encoding import PositionalEncoding
 class MedEncoder(nn.Module):
     def __init__(
         self, label_vocab_size=263, unit_vocab_size=8, category_vocab_size=17, 
-        label_emb_dim=16, unit_emb_dim=16, category_emb_dim=8, hours_emb_dim=8, value_emb_dim=8,
-        d_model=128, nhead=8, num_layers=4, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500,
+        label_emb_dim=32, unit_emb_dim=32, category_emb_dim=32, hours_emb_dim=32, value_emb_dim=32,
+        d_model=128, nhead=4, num_layers=2, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500,
         return_cls=True):
         super().__init__()
 
