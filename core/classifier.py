@@ -1,18 +1,18 @@
 import torch.nn as nn
 
 class SimpleClassifier(nn.Module):
-  def __init__(self, encoder, encoder_dim, out_dim):
+  def __init__(self, encoder, encoder_dim, num_classes):
     super(SimpleClassifier, self).__init__()
     self.encoder = encoder
-    self.classifier = nn.Sequential(
-        nn.Linear(encoder_dim, 512),
-        nn.ReLU(),
-    )
-    self.final_layer = nn.Linear(512, out_dim)
 
-  def forward(self, x, mask):
-    x = self.encoder(x, mask)
-    x = x[:, 0, :]
+    self.classifier = nn.Sequential(
+      nn.Linear(encoder_dim, encoder_dim),
+      nn.ReLU(),
+      nn.Dropout(0.2),
+      nn.Linear(encoder_dim, num_classes)
+      )
+
+  def forward(self, input):
+    x = self.encoder(x, input)
     x = self.classifier(x)
-    x = self.final_layer(x)
     return x
