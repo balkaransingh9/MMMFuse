@@ -42,4 +42,5 @@ class PhysioCollate:
 
         attention_masks = {'physio': ~physio_attention_mask}
         #return {"x_data": physio_pad, "attention_masks": attention_masks, "labels": labels}
-        return {"x": physio_pad, "mask": ~physio_attention_mask, "labels": labels}
+        #return {"x": physio_pad, "mask": ~physio_attention_mask, "labels": labels}
+        return {"inputs": {"pad": physio_pad, "attention_mask": ~physio_attention_mask}, "labels":labels}
