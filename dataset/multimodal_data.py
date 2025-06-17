@@ -2,100 +2,109 @@ import torch
 from torch.utils.data import Dataset
 import lmdb
 from io import BytesIO
+import pickle
 
 class MultimodalData(Dataset):
-  def __init__(self, list_file, task_type = 'phenotype', split = 'train', 
-               normaliser_physio = None, normaliser_ecg = None,
-               lmdb_path_physio='none', lmdb_path_ecg='none', lmdb_path_text='none'):
-    self.list_file = list_file
-    self.split = split
+    def __init__(
+        self,
+        list_file,
+        modalities,               # e.g. ['physio','ecg','text'] or ['physio','medicine','text']
+        task_type='phenotype',
+        split='train',
+        normaliser_physio=None,
+        normaliser_ecg=None,
+        lmdb_path_physio='none',
+        lmdb_path_ecg='none',
+        lmdb_path_text='none',
+        lmdb_path_medicine='none',
+    ):
+        self.list_file      = list_file
+        self.modalities     = modalities
+        self.task_type      = task_type
+        self.split          = split  # assume `list_file` has an 'original_split' column
 
-    if split == 'train':
-      self.data_split = self.list_file[self.list_file['original_split'] == 'train'].reset_index(drop=True)
-    if split == 'test':
-      self.data_split = self.list_file[self.list_file['original_split'] == 'test'].reset_index(drop=True)
+        # split the DataFrame
+        if self.split == 'train':
+            self.data_split = list_file[list_file['original_split']=='train'].reset_index(drop=True)
+        else:
+            self.data_split = list_file[list_file['original_split']=='test'].reset_index(drop=True)
 
-    if task_type == 'phenotype':
-      extra_cols = ['subject_id', 'stay', 'period_length', 'stay_id', 'original_split', 'ecg_path']
-      self.sample_labels = torch.tensor(self.data_split.drop(extra_cols, axis=1).values).float()
-    elif task_type == 'in_hospital_mortality':
-      self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
-    elif task_type == 'length_of_stay':
-      self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
-    else:
-      raise ValueError("Unsupported task type!")      
-    
-    self.sample_keys = [i.split(".")[0].encode('utf-8') for i in self.data_split['stay'].values]
-    self.sample_keys_text = [str(i).encode('utf-8') for i in self.data_split['stay_id'].values]
+        # labels
+        if task_type == 'phenotype':
+            extra = ['subject_id','stay','period_length','stay_id','original_split','ecg_path']
+            self.sample_labels = torch.tensor(self.data_split.drop(extra,axis=1).values).float()
+        else:
+            self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
 
-    self.m_physio = normaliser_physio['mean']
-    self.stds_physio = normaliser_physio['std']
+        # keys for LMDB
+        self.sample_keys = [s.split('.')[0].encode('utf-8') for s in self.data_split['stay'].astype(str)]
+        self.sample_keys_sid = [s.encode('utf-8') for s in self.data_split['stay_id'].astype(str)]
 
-    self.m_ecg = normaliser_ecg['mean']
-    self.stds_ecg = normaliser_ecg['std']
+        # normaliser params
+        if 'physio' in modalities:
+            self.m_physio, self.s_physio = normaliser_physio['mean'], normaliser_physio['std']
+        if 'ecg'   in modalities:
+            self.m_ecg,   self.s_ecg   = normaliser_ecg['mean'],   normaliser_ecg['std']
 
-    self.lmdb_path_physio = lmdb_path_physio
-    self.lmdb_path_ecg = lmdb_path_ecg
-    self.lmdb_path_text = lmdb_path_text
+        # LMDB paths + env stubs
+        self.lmdb_paths = {
+            'physio':   lmdb_path_physio,
+            'ecg':      lmdb_path_ecg,
+            'text':     lmdb_path_text,
+            'medicine': lmdb_path_medicine,
+        }
+        self.envs = {mod: None for mod in modalities}
 
-    self.env_lmdb_data_physio = None
-    self.env_lmdb_data_ecg = None
-    self.env_lmdb_data_text = None
+    def __len__(self):
+        return len(self.data_split)
 
-  def _normaliser_physio(self, input):
-    norm = (input - self.m_physio)/self.stds_physio
-    return norm
+    def __getitem__(self, idx):
+        out = {}
+        flags = {}
 
-  def _normaliser_ecg(self, input):
-    norm = (input - self.m_ecg)/self.stds_ecg
-    return norm
+        for mod in self.modalities:
+            loader = getattr(self, f"_load_{mod}")
+            data, missed = loader(idx)
+            out[mod]       = data
+            flags[f"{mod}_missing"] = missed
 
-  def __len__(self):
-    return len(self.data_split)
+        label = self.sample_labels[idx]
+        return out, flags, label
 
-  def __getitem__(self, idx):
-    #--loading physio data--
-    physio_missing_flag = False
-    if self.env_lmdb_data_physio == None:
-      self.env_lmdb_data_physio = lmdb.open(self.lmdb_path_physio, readonly=True, lock=False)
-      self.txn_data_physio = self.env_lmdb_data_physio.begin(write=False)
+    def _open_env(self, mod):
+        # helper to lazily open each env
+        if self.envs[mod] is None:
+            self.envs[mod] = lmdb.open(self.lmdb_paths[mod], readonly=True, lock=False)
+            self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
 
-    retrieved_bytes = self.txn_data_physio.get(self.sample_keys[idx])
-    if retrieved_bytes is not None:
-      buffer = BytesIO(retrieved_bytes)
-      loaded_data = torch.load(buffer, weights_only=True)
-      normalised_sample_physio = self._normaliser_physio(loaded_data['sample'])
-    else:
-      normalised_sample_physio = None
-      physio_missing_flag = True
+    def _load_physio(self, idx):
+        self._open_env('physio')
+        raw = self.envs['physio_txn'].get(self.sample_keys[idx])
+        if raw is None:
+            return None, True
+        buf = BytesIO(raw)
+        data = torch.load(buf, weights_only=True)['sample']
+        return (data - self.m_physio) / self.s_physio, False
 
-    #--loading ecg data--
-    ecg_missing_flag = False
-    if self.env_lmdb_data_ecg == None:
-      self.env_lmdb_data_ecg = lmdb.open(self.lmdb_path_ecg, readonly=True, lock=False)
-      self.txn_data_ecg = self.env_lmdb_data_ecg.begin(write=False)
+    def _load_ecg(self, idx):
+        self._open_env('ecg')
+        raw = self.envs['ecg_txn'].get(self.sample_keys[idx])
+        if raw is None:
+            return None, True
+        buf = BytesIO(raw)
+        data = torch.load(buf, weights_only=True)['sample']
+        return (data - self.m_ecg) / self.s_ecg, False
 
-    retrieved_bytes = self.txn_data_ecg.get(self.sample_keys[idx])
-    if retrieved_bytes is not None:
-      buffer = BytesIO(retrieved_bytes)
-      loaded_data = torch.load(buffer, weights_only=True)
-      normalised_sample_ecg = self._normaliser_ecg(loaded_data)
-    else:
-      normalised_sample_ecg = None
-      ecg_missing_flag = True
+    def _load_medicine(self, idx):
+        self._open_env('medicine')
+        raw = self.envs['medicine_txn'].get(self.sample_keys_sid[idx])
+        if raw is None:
+            return None, True
+        return pickle.loads(raw), False
 
-    #--loading text data--
-    text_missing_flag = False
-    if self.env_lmdb_data_text == None:
-      self.env_lmdb_data_text = lmdb.open(self.lmdb_path_text, readonly=True, lock=False)
-      self.txn_data_text = self.env_lmdb_data_text.begin(write=False)
-
-    text_bytes = self.txn_data_text.get(self.sample_keys_text[idx])
-    if text_bytes is not None:
-      text = text_bytes.decode('utf-8')
-    else:
-      text = ""
-      text_missing_flag = True
-
-    missing_flag_dict = {'physio_missing': physio_missing_flag, 'ecg_missing': ecg_missing_flag, 'text_missing': text_missing_flag}
-    return normalised_sample_physio, normalised_sample_ecg, text, missing_flag_dict, self.sample_labels[idx]
+    def _load_text(self, idx):
+        self._open_env('text')
+        raw = self.envs['text_txn'].get(self.sample_keys_sid[idx])
+        if raw is None:
+            return "", True
+        return raw.decode('utf-8'), False

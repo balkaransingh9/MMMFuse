@@ -3,18 +3,12 @@ from torch.utils.data import DataLoader
 from .physio_data import PhysioData
 from .text_data import TextData
 from .ecg_data import ECGData
-from ._multimodal_data import MultimodalData
+from .multimodal_data import MultimodalData
 
 from .collate.ecg_collate import ECGCollate
-from .collate._multimodal_collate import MultimodalCollate
+from .collate.multimodal_collate import MultimodalCollate
 from .collate.physio_collate import PhysioCollate
 from .collate.text_collate import TextCollate
-
-from .utils.normaliser import med_normaliser
-from .utils.build_vocab import build_vocab
-
-from transformers import AutoTokenizer
-from .utils.med_tokenizer import MedTokenizer
 
 """
 For Unimodal Data
@@ -96,23 +90,22 @@ class UnimodalDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             collate_fn=self.collate_fn
         )
+    
 
 """
 For Multimodal Data
 """
 class MultimodalDataModule(pl.LightningDataModule):
     def __init__(self, listfile, task_type='phenotype', modalities = ['physio','ecg','text'],
-                 lmdb_path_physio = '', lmdb_path_ecg = '',
-                 lmdb_path_text = '', lmdb_path_medicine = '',
-                 normaliser_physio = None, normaliser_ecg = None, batch_size=64, num_workers=4):
+                 lmdb_path_physio = '', lmdb_path_ecg = '', 
+                 lmdb_path_text = '', normaliser_physio = None, 
+                 normaliser_ecg = None, batch_size=64, num_workers=4):
         super().__init__()
         self.listfile = listfile
-        self.modalities = modalities
-       
+        
         self.lmdb_path_physio = lmdb_path_physio
         self.lmdb_path_ecg = lmdb_path_ecg
         self.lmdb_path_text = lmdb_path_text
-        self.lmdb_path_medicine = lmdb_path_medicine
 
         self.normaliser_physio = normaliser_physio
         self.normaliser_ecg = normaliser_ecg
@@ -129,32 +122,22 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.num_workers = num_workers
 
-        self.mednorm = med_normaliser(self.listfile, self.lmdb_path_medicine)
-        self.label_vocab = build_vocab(self.lmdb_path_medicine, 'label')
-        self.unit_vocab = build_vocab(self.lmdb_path_medicine, 'amount_std_uom')
-        self.cat_vocab = build_vocab(self.lmdb_path_medicine, 'ordercategoryname')
-
-        MODEL_NAME = 'nlpie/tiny-clinicalbert'
-        self.text_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-        self.med_tokenizer = MedTokenizer(self.label_vocab, self.unit_vocab,
-                                          self.cat_vocab, self.mednorm)
-
     def prepare_data(self):
         pass
 
     def setup(self, stage=None):
         # Called on every GPU separately; stage can be 'fit' or 'test'
         if stage in (None, 'fit'):
-            self.train_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='train',
+            self.train_ds = MultimodalData(self.listfile, task_type=self.task_type, split='train',
                                            normaliser_physio=self.normaliser_physio, normaliser_ecg=self.normaliser_ecg, 
                                            lmdb_path_physio=self.lmdb_path_physio, lmdb_path_ecg=self.lmdb_path_ecg,
-                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine)
-
+                                           lmdb_path_text=self.lmdb_path_text)
+                
         if stage in (None, 'test'):
-            self.test_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='test',
+            self.test_ds = MultimodalData(self.listfile, task_type=self.task_type, split='test',
                                            normaliser_physio=self.normaliser_physio, normaliser_ecg=self.normaliser_ecg, 
                                            lmdb_path_physio=self.lmdb_path_physio, lmdb_path_ecg=self.lmdb_path_ecg,
-                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine)
+                                           lmdb_path_text=self.lmdb_path_text)
 
     def train_dataloader(self):
         return DataLoader(
@@ -163,10 +146,7 @@ class MultimodalDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=MultimodalCollate(modalities=self.modalities,
-                                         text_tokenizer=self.text_tokenizer,
-                                         med_tokenizer=self.med_tokenizer,
-                                         task_type=self.task_type)
+            collate_fn=MultimodalCollate(task_type=self.task_type)
         )
 
     def test_dataloader(self):
@@ -176,8 +156,6 @@ class MultimodalDataModule(pl.LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=True,
-            collate_fn=MultimodalCollate(modalities=self.modalities,
-                                         text_tokenizer=self.text_tokenizer,
-                                         med_tokenizer=self.med_tokenizer,
-                                         task_type=self.task_type)
+            collate_fn=MultimodalCollate(task_type=self.task_type)
         )
+
