@@ -2,7 +2,7 @@ import torch.nn as nn
 
 class SimpleClassifier(nn.Module):
   def __init__(self, encoder, encoder_dim, num_classes):
-    super(SimpleClassifier, self).__init__()
+    super().__init__()
     self.encoder = encoder
 
     self.classifier = nn.Sequential(
@@ -12,7 +12,7 @@ class SimpleClassifier(nn.Module):
       nn.Linear(encoder_dim, num_classes)
       )
 
-  def forward(self, input):
-    x = self.encoder(x, input)
+  def forward(self, inputs):
+    x = self.encoder(inputs)
     x = self.classifier(x)
     return x
