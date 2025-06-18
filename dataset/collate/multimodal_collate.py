@@ -71,7 +71,7 @@ class MultimodalCollate:
             texts = [o['text'] for o in outs_list]
             tokenized = self.text_tok(
                 texts,
-                padding='max_length',
+                padding='longest',
                 truncation=True,
                 max_length=self.text_max_len,
                 return_tensors='pt',

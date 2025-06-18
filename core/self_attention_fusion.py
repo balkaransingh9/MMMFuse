@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-class MMFusionAuto(nn.Module):
+class SelfAttentionFusion(nn.Module):
     def __init__(
         self,
         encoders: dict,         # e.g. {'physio': PhysioEncoder(), 'text': TextEncoder(), ...}
