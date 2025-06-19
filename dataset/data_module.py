@@ -163,6 +163,7 @@ class MultimodalDataModule(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.num_workers,
             pin_memory=True,
+            prefetch_factor=2,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
                                          med_tokenizer=self.med_tokenizer,
