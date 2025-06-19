@@ -100,6 +100,6 @@ class MultimodalCollate:
         elif self.task_type == 'in_hospital_mortality':
             labels = torch.tensor(labels_list, dtype=torch.float32).unsqueeze(1)
         else:  # length_of_stay
-            labels = torch.tensor(labels_list, dtype=torch.long)
-
+            labels = torch.tensor(labels_list).long()
+ 
         return {"inputs":seq_data, "present_mask":miss_mask, "labels":labels}
