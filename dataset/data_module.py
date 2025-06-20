@@ -104,6 +104,7 @@ class MultimodalDataModule(pl.LightningDataModule):
     def __init__(self, listfile, task_type='phenotype', modalities = ['physio','ecg','text'],
                  lmdb_path_physio = '', lmdb_path_ecg = '',
                  lmdb_path_text = '', lmdb_path_medicine = '',
+                 text_model_name = 'nlpie/tiny-clinicalbert', text_max_len = 512,
                  normaliser_physio = None, normaliser_ecg = None, batch_size=64, num_workers=4):
         super().__init__()
         self.listfile = listfile
@@ -128,14 +129,14 @@ class MultimodalDataModule(pl.LightningDataModule):
 
         self.batch_size = batch_size
         self.num_workers = num_workers
+        self.text_max_len = text_max_len
 
         self.mednorm = med_normaliser(self.listfile, self.lmdb_path_medicine)
         self.label_vocab = build_vocab(self.lmdb_path_medicine, 'label')
         self.unit_vocab = build_vocab(self.lmdb_path_medicine, 'amount_std_uom')
         self.cat_vocab = build_vocab(self.lmdb_path_medicine, 'ordercategoryname')
 
-        MODEL_NAME = 'nlpie/tiny-clinicalbert'
-        self.text_tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+        self.text_tokenizer = AutoTokenizer.from_pretrained(text_model_name)
         self.med_tokenizer = MedTokenizer(self.label_vocab, self.unit_vocab,
                                           self.cat_vocab, self.mednorm)
 
@@ -167,7 +168,7 @@ class MultimodalDataModule(pl.LightningDataModule):
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
                                          med_tokenizer=self.med_tokenizer,
-                                         task_type=self.task_type)
+                                         task_type=self.task_type, text_max_len=self.text_max_len)
         )
 
     def test_dataloader(self):
@@ -180,5 +181,5 @@ class MultimodalDataModule(pl.LightningDataModule):
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
                                          med_tokenizer=self.med_tokenizer,
-                                         task_type=self.task_type)
+                                         task_type=self.task_type, text_max_len=self.text_max_len)
         )
