@@ -24,7 +24,8 @@ class TextEncoder(nn.Module):
          out = outputs.pooler_output
          out = self.common_projection(out)
          out = self.dropout(out)
+         return out
       else:
          out = outputs.last_hidden_state
-    
+         return out    
     
