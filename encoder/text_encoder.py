@@ -18,10 +18,13 @@ class TextEncoder(nn.Module):
 
       outputs = self.encoder(input_ids=input_ids,
                              attention_mask=attention_mask)
-      x = self.common_projection(outputs.last_hidden_state)
-      x = self.dropout(x)
-
+      
+  
       if self.return_cls == True:
-        return x[:, 0, :]
+         out = outputs.pooler_output
+         out = self.common_projection(out)
+         out = self.dropout(out)
       else:
-        return x
+         out = outputs.last_hidden_state
+    
+    
