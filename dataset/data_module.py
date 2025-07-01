@@ -105,7 +105,8 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_physio = '', lmdb_path_ecg = '',
                  lmdb_path_text = '', lmdb_path_medicine = '',
                  text_model_name = 'nlpie/tiny-clinicalbert', text_max_len = 512,
-                 normaliser_physio = None, normaliser_ecg = None, batch_size=64, num_workers=4):
+                 normaliser_physio = None, normaliser_ecg = None,
+                 use_validation_set = False, batch_size=64, num_workers=4):
         super().__init__()
         self.listfile = listfile
         self.modalities = modalities
@@ -126,6 +127,8 @@ class MultimodalDataModule(pl.LightningDataModule):
             self.task_type = task_type
         else:
             raise ValueError("Task type not supported!")
+        
+        self.use_validation_set = use_validation_set
 
         self.batch_size = batch_size
         self.num_workers = num_workers
@@ -150,6 +153,12 @@ class MultimodalDataModule(pl.LightningDataModule):
                                            normaliser_physio=self.normaliser_physio, normaliser_ecg=self.normaliser_ecg, 
                                            lmdb_path_physio=self.lmdb_path_physio, lmdb_path_ecg=self.lmdb_path_ecg,
                                            lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine)
+           
+            if self.use_validation_set == True:
+                self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
+                                           normaliser_physio=self.normaliser_physio, normaliser_ecg=self.normaliser_ecg, 
+                                           lmdb_path_physio=self.lmdb_path_physio, lmdb_path_ecg=self.lmdb_path_ecg,
+                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine)
 
         if stage in (None, 'test'):
             self.test_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='test',
@@ -169,6 +178,22 @@ class MultimodalDataModule(pl.LightningDataModule):
                                          text_tokenizer=self.text_tokenizer,
                                          med_tokenizer=self.med_tokenizer,
                                          task_type=self.task_type, text_max_len=self.text_max_len)
+        )
+    
+
+    def val_dataloader(self):
+        if self.use_validation_set == True:
+            return DataLoader(
+                self.val_ds,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=self.num_workers,
+                pin_memory=True,
+                prefetch_factor=2,
+                collate_fn=MultimodalCollate(modalities=self.modalities,
+                                            text_tokenizer=self.text_tokenizer,
+                                            med_tokenizer=self.med_tokenizer,
+                                            task_type=self.task_type, text_max_len=self.text_max_len)
         )
 
     def test_dataloader(self):

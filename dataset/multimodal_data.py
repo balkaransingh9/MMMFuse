@@ -11,23 +11,28 @@ class MultimodalData(Dataset):
         modalities,               # e.g. ['physio','ecg','text'] or ['physio','medicine','text']
         task_type='phenotype',
         split='train',
+        split_col_name = 'original_split',
         normaliser_physio=None,
         normaliser_ecg=None,
         lmdb_path_physio='none',
         lmdb_path_ecg='none',
         lmdb_path_text='none',
         lmdb_path_medicine='none',
+
     ):
         self.list_file      = list_file
         self.modalities     = modalities
         self.task_type      = task_type
         self.split          = split  # assume `list_file` has an 'original_split' column
+        self.split_col_name = split_col_name
 
         # split the DataFrame
         if self.split == 'train':
-            self.data_split = list_file[list_file['original_split']=='train'].reset_index(drop=True)
+            self.data_split = list_file[list_file[self.split_col_name]=='train'].reset_index(drop=True)
+        elif self.split == 'val':
+            self.data_split = list_file[list_file[self.split_col_name]=='val'].reset_index(drop=True)
         else:
-            self.data_split = list_file[list_file['original_split']=='test'].reset_index(drop=True)
+            self.data_split = list_file[list_file[self.split_col_name]=='test'].reset_index(drop=True)
 
         # labels
         if task_type == 'phenotype':
