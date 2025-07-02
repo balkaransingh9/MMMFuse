@@ -19,7 +19,7 @@ class SimpleTrainer(pl.LightningModule):
         self.criterion = criterion
         self._external_optimizer = optimizer
         self.test_metrics = nn.ModuleDict(test_metrics)
-
+ 
     def forward(self, **batch):
         return self.model(**batch)
 
@@ -37,6 +37,7 @@ class SimpleTrainer(pl.LightningModule):
         logits = self(**inputs)
         loss   = self.criterion(logits, labels)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
+        
 
     def test_step(self, batch, batch_idx):
         labels = batch["labels"]
