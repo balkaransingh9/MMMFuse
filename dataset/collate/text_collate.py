@@ -40,4 +40,4 @@ class TextCollate:
         else:
             labels = torch.tensor(labels_list).long()
 
-        return {"x_data":tokenized_text, "labels":labels}
+        return {"inputs":tokenized_text, "labels":labels}

@@ -28,7 +28,7 @@ class MultimodalCollate:
             raise ValueError(f"Unsupported task type: {task_type}")
         self.task_type    = task_type
         self.modalities   = modalities
-        self.text_tok     = text_tokenizer
+        self.text_tok = text_tokenizer
         self.med_tok      = med_tokenizer
         self.text_max_len = text_max_len
         self.med_max_len  = med_max_len
