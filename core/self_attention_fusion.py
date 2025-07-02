@@ -11,6 +11,7 @@ class SelfAttentionFusion(nn.Module):
         num_attention_heads: int = 4,
         num_transformer_layers: int = 1,
         dropout: float = 0.2,
+        dropout_classifier: float = 0.2
     ):
         super().__init__()
 
@@ -47,7 +48,7 @@ class SelfAttentionFusion(nn.Module):
         self.classifier = nn.Sequential(
             nn.Linear(common_dim, common_dim),
             nn.ReLU(),
-            nn.Dropout(dropout),
+            nn.Dropout(dropout_classifier),
             nn.Linear(common_dim, num_classes)
         )
 
