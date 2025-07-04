@@ -19,12 +19,12 @@ class MedEncoder(nn.Module):
 
         total_emb_dim = label_emb_dim + unit_emb_dim + category_emb_dim + hours_emb_dim + value_emb_dim
 
-        self.input_proj = nn.Linear(total_emb_dim, d_model)
-        self.pos_enc = PositionalEncoding(d_model, dropout, max_len + 1)
-        self.cls_token = nn.Parameter(torch.randn(1, 1, d_model))
+        self.input_proj = nn.Linear(total_emb_dim, model_dim)
+        self.pos_enc = PositionalEncoding(model_dim, dropout, max_len + 1)
+        self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))
 
         encoder_layer = nn.TransformerEncoderLayer(
-            d_model,
+            model_dim,
             nhead,
             dim_feedforward,
             dropout,
