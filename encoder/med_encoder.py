@@ -6,10 +6,11 @@ class MedEncoder(nn.Module):
     def __init__(
         self, label_vocab_size=263, unit_vocab_size=8, category_vocab_size=17, 
         label_emb_dim=32, unit_emb_dim=32, category_emb_dim=32, hours_emb_dim=32, value_emb_dim=32,
-        d_model=128, nhead=4, num_layers=2, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500,
+        model_dim=128, nhead=4, num_layers=2, dim_feedforward=256, dropout=0.1, pad_idx=0, max_len=500,
         return_cls=True):
         super().__init__()
 
+        self.model_dim = model_dim
         self.label_emb = nn.Embedding(label_vocab_size, label_emb_dim, padding_idx=pad_idx)
         self.unit_emb = nn.Embedding(unit_vocab_size, unit_emb_dim, padding_idx=pad_idx)
         self.cat_emb = nn.Embedding(category_vocab_size, category_emb_dim, padding_idx=pad_idx)

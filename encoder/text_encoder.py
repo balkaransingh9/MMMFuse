@@ -9,6 +9,7 @@ class TextEncoder(nn.Module):
         output_type: one of ['cls', 'mean', 'token']
         """
         super().__init__()
+        self.model_dim = model_dim
         self.encoder = AutoModel.from_pretrained(model_name)
         hidden_size = self.encoder.config.hidden_size
         self.common_projection = nn.Linear(hidden_size, model_dim)

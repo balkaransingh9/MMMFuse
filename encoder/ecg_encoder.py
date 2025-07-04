@@ -7,6 +7,7 @@ class TSTModelECG_Patched(nn.Module):
                  nhead=4, ff_dim=128, nlayers=3, dropout=0.3, return_cls = True):
         super(TSTModelECG_Patched, self).__init__()
         assert max_time_len % patch_size == 0, "max_time_len must be divisible by patch_size"
+        
         self.patch_size = patch_size
         self.model_dim = model_dim
         self.max_num_patches = max_time_len // patch_size
