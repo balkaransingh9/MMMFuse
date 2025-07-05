@@ -7,7 +7,7 @@ from .pos_encoding import PositionalEncoding
 class EHR_TSTEncoder(nn.Module):
     def __init__(self, input_dim, model_dim=64, max_time_len=4000,
                  nhead=2, ff_dim=128, nlayers=2, dropout=0.3, return_cls=True):
-        super(EHR_TSTEncoder, self).__init__()
+        super().__init__()
         self.model_dim = model_dim
         self.in_projection = nn.Linear(input_dim, model_dim)
         self.cls_token = nn.Parameter(torch.randn(1, 1, model_dim))

@@ -10,6 +10,7 @@ class SimpleTrainer(pl.LightningModule):
         criterion: torch.nn.Module,
         optimizer: Optimizer = None,
         test_metrics: dict = None,
+        val_metrics: dict = None,
         lr: float = 1e-4,
         weight_decay: float = 1e-5,
     ):
@@ -20,6 +21,7 @@ class SimpleTrainer(pl.LightningModule):
         self.criterion = criterion
         self._external_optimizer = optimizer
         self.test_metrics = nn.ModuleDict(test_metrics)
+        self.val_metrics = nn.ModuleDict(val_metrics)
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -46,6 +48,12 @@ class SimpleTrainer(pl.LightningModule):
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
         loss = self.criterion(logits, labels)
+
+        probs = self._activation(logits)
+        for name, metric in self.val_metrics.items():
+            metric.update(probs, labels.int())
+            self.log(f"val_{name}", metric.compute(), prog_bar=False)
+
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
@@ -54,9 +62,7 @@ class SimpleTrainer(pl.LightningModule):
         logits = self(**inputs)
         loss = self.criterion(logits, labels)
 
-        # Choose activation function based on task
         probs = self._activation(logits)
-
         for name, metric in self.test_metrics.items():
             metric.update(probs, labels.int())
             self.log(f"test_{name}", metric.compute(), prog_bar=True)
