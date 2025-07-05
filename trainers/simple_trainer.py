@@ -56,7 +56,7 @@ class SimpleTrainer(pl.LightningModule):
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
-    def validation_epoch_end(self):
+    def on_validation_epoch_end(self):
         for name, metric in self.val_metrics.items():
             metric.reset()
 
