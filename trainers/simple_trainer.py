@@ -56,6 +56,11 @@ class SimpleTrainer(pl.LightningModule):
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
+    def validation_epoch_end(self):
+        for name, metric in self.val_metrics.items():
+            metric.reset()
+
+
     def test_step(self, batch, batch_idx):
         labels = batch["labels"]
         inputs = {k: v for k, v in batch.items() if k != "labels"}
