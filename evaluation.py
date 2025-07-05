@@ -20,6 +20,7 @@ class MetricFactory:
         
         elif self.task_type == "multiclass":
             return {
+                "AUROC": tmc.MulticlassAUROC(num_classes=self.num_labels, average="macro"),
                 "AUROC Macro": tmc.MulticlassAUROC(num_classes=self.num_labels, average="macro"),
                 "AUROC Weighted": tmc.MulticlassAUROC(num_classes=self.num_labels, average="weighted"),
                 "Precision": tmc.MulticlassPrecision(num_classes=self.num_labels, average=self.average),
@@ -30,6 +31,7 @@ class MetricFactory:
         
         elif self.task_type == "multilabel":
             return {
+                "AUROC": tmc.MultilabelAUROC(num_labels=self.num_labels, average="macro"),
                 "AUROC Macro": tmc.MultilabelAUROC(num_labels=self.num_labels, average="macro"),
                 "AUROC Micro": tmc.MultilabelAUROC(num_labels=self.num_labels, average="micro"),
                 "AUROC Weighted": tmc.MultilabelAUROC(num_labels=self.num_labels, average="weighted"),

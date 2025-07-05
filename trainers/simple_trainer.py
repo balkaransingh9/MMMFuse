@@ -52,7 +52,7 @@ class SimpleTrainer(pl.LightningModule):
         probs = self._activation(logits)
         for name, metric in self.val_metrics.items():
             metric.update(probs, labels.int())
-            self.log(f"val_{name}", metric.compute(), prog_bar=False)
+            self.log(f"val_{name}", metric.compute(), prog_bar=(name == "AUROC"))
 
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
 
