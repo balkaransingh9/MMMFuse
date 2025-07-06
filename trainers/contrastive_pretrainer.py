@@ -34,18 +34,21 @@ class ContrastivePretrainer(pl.LightningModule):
 
     def info_nce(self, z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
         B = z1.size(0)
-        z = torch.cat([z1, z2], dim=0)                       # (2B, D)
-        sims = torch.matmul(z, z.T) / self.temp              # (2B,2B)
-        mask = (~torch.eye(2*B, device=z.device)).float()
+        z = torch.cat([z1, z2], dim=0)                      # (2B, D)
+        sims = torch.matmul(z, z.T) / self.temp             # (2B,2B)
+
+        # make a bool identity matrix, invert it, then cast to float
+        mask = (~torch.eye(2*B, dtype=torch.bool, device=z.device)).float()
         exp_sims = torch.exp(sims) * mask
-        pos = torch.exp((z1 * z2).sum(-1) / self.temp)       # (B,)
+
+        pos = torch.exp((z1 * z2).sum(-1) / self.temp)      # (B,)
         pos = torch.cat([pos, pos], dim=0)                  # (2B,)
         return -torch.log(pos / exp_sims.sum(dim=-1)).mean()
 
     def training_step(self, batch, batch_idx):
         # assume batch includes keys for each modality plus:
         #   batch['present_mask'] shape (B, M)
-        pres = batch['present_mask']   # Tensor of 0/1
+        pres = batch['present_mask'].bool()  # Tensor of 0/1
         inputs = batch['inputs']
         feats = {}
 
