@@ -45,12 +45,13 @@ class ContrastivePretrainer(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # assume batch includes keys for each modality plus:
         #   batch['present_mask'] shape (B, M)
-        pres = batch.pop('present_mask')   # Tensor of 0/1
+        pres = batch['present_mask']   # Tensor of 0/1
+        inputs = batch['inputs']
         feats = {}
 
         # 1) encode+project all modalities
         for i, m in enumerate(self.modalities):
-            h = self.encoders[m](batch[m])               # (B, E_m)
+            h = self.encoders[m](inputs[m])               # (B, E_m)
             p = self.projections[m](h)                   # (B, P)
             feats[m] = F.normalize(p, dim=-1)            # normalize now
 
