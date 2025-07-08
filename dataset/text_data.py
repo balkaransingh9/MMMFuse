@@ -9,6 +9,8 @@ class TextData(Dataset):
 
     if split == 'train':
       self.data_split = self.list_file[self.list_file['original_split'] == 'train'].reset_index(drop=True)
+    if split == 'val':
+      self.data_split = self.list_file[self.list_file['original_split'] == 'val'].reset_index(drop=True)        
     if split == 'test':
       self.data_split = self.list_file[self.list_file['original_split'] == 'test'].reset_index(drop=True)
 
