@@ -10,6 +10,7 @@ class MetricFactory:
         if self.task_type == "binary":
             return {
                 "AUROC": tmc.BinaryAUROC(),
+                "AUPRC": tmc.BinaryAveragePrecision(),
                 "Precision": tmc.BinaryPrecision(),
                 "Recall": tmc.BinaryRecall(),
                 "F1": tmc.BinaryF1Score(),
@@ -22,7 +23,7 @@ class MetricFactory:
             return {
                 "AUROC": tmc.MulticlassAUROC(num_classes=self.num_labels, average="macro"),
                 "AUROC Macro": tmc.MulticlassAUROC(num_classes=self.num_labels, average="macro"),
-                "AUROC Weighted": tmc.MulticlassAUROC(num_classes=self.num_labels, average="weighted"),
+                "AUPRC Macro": tmc.MulticlassAveragePrecision(num_classes=self.num_labels, average="macro"),
                 "Precision": tmc.MulticlassPrecision(num_classes=self.num_labels, average=self.average),
                 "Recall": tmc.MulticlassRecall(num_classes=self.num_labels, average=self.average),
                 "F1": tmc.MulticlassF1Score(num_classes=self.num_labels, average=self.average),
@@ -34,11 +35,11 @@ class MetricFactory:
                 "AUROC": tmc.MultilabelAUROC(num_labels=self.num_labels, average="macro"),
                 "AUROC Macro": tmc.MultilabelAUROC(num_labels=self.num_labels, average="macro"),
                 "AUROC Micro": tmc.MultilabelAUROC(num_labels=self.num_labels, average="micro"),
-                "AUROC Weighted": tmc.MultilabelAUROC(num_labels=self.num_labels, average="weighted"),
+                "AUPRC Macro": tmc.MultilabelAveragePrecision(num_labels=self.num_labels, average="macro"),
+                "AUPRC Micro": tmc.MultilabelAveragePrecision(num_labels=self.num_labels, average="micro"),
                 "Precision": tmc.MultilabelPrecision(num_labels=self.num_labels, average=self.average),
                 "Recall": tmc.MultilabelRecall(num_labels=self.num_labels, average=self.average),
                 "F1": tmc.MultilabelF1Score(num_labels=self.num_labels, average=self.average),
-                "Accuracy": tmc.MultilabelAccuracy(num_labels=self.num_labels, average=self.average),
                 "Hamming Loss": tmc.MultilabelHammingDistance(num_labels=self.num_labels),
                 "Exact Match Ratio": tmc.MultilabelExactMatch(num_labels=self.num_labels),
             }
