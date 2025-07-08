@@ -56,7 +56,7 @@ class SimpleTrainer(pl.LightningModule):
 
     @torch.no_grad()
     def validation_step(self, batch, batch_idx):
-        labels = batch["labels"].int()
+        labels = batch["labels"]
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
 
@@ -84,7 +84,7 @@ class SimpleTrainer(pl.LightningModule):
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
         # only update metrics, no compute/log here
-        labels = batch["labels"].int()
+        labels = batch["labels"]
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
         loss = self.criterion(logits, labels)
