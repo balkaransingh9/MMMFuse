@@ -61,11 +61,22 @@ class UnimodalDataModule(pl.LightningDataModule):
             if self.modality == 'physio':
                 self.train_ds = PhysioData(self.listfile, task_type=self.task_type, split='train',
                                            normaliser_physio=self.normaliser, lmdb_path_physio=self.lmdb_path)
+
+                self.val_ds = PhysioData(self.listfile, task_type=self.task_type, split='val',
+                                           normaliser_physio=self.normaliser, lmdb_path_physio=self.lmdb_path)
+
             if self.modality == 'ecg':
                 self.train_ds = ECGData(self.listfile, task_type=self.task_type, split='train',
                                         normaliser_ecg=self.normaliser, lmdb_path_ecg=self.lmdb_path)
+
+                self.val_ds = ECGData(self.listfile, task_type=self.task_type, split='val',
+                                        normaliser_ecg=self.normaliser, lmdb_path_ecg=self.lmdb_path)
+
             if self.modality == 'text':
                 self.train_ds = TextData(self.listfile, task_type=self.task_type, split='train',
+                                         lmdb_path_text=self.lmdb_path)
+
+                self.val_ds = TextData(self.listfile, task_type=self.task_type, split='val',
                                          lmdb_path_text=self.lmdb_path)
 
         if stage in (None, 'test'):
@@ -82,6 +93,15 @@ class UnimodalDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train_ds,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=self.collate_fn
+        )
+    
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_ds,
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
