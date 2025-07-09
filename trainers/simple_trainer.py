@@ -20,27 +20,27 @@ class SimpleTrainer(pl.LightningModule):
         save_results: bool = True,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=['model', 'criterion', 'optimizer', 'test_metrics', 'val_metrics'])
+        # Save hyperparameters except modules/metrics themselves
+        self.save_hyperparameters(ignore=['model','criterion','optimizer','test_metrics','val_metrics'])
 
         self.model = model
         self.criterion = criterion
         self._external_optimizer = optimizer
+
+        # Wrap metrics in ModuleDict so they’re properly registered
         self.test_metrics = nn.ModuleDict(test_metrics or {})
-        self.val_metrics = nn.ModuleDict(val_metrics or {})
-        self.task_name = task_name or "default_task"
-        self.run_id = run_id or ""
+        self.val_metrics  = nn.ModuleDict(val_metrics or {})
+
+        self.task_name   = task_name or "default_task"
+        self.run_id      = run_id or ""
         self.save_results = save_results
 
+        # Prepare a directory for saving results
         self.results_dir = Path("results") / self.task_name
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
-        # Cache label casting function
-        if isinstance(self.criterion, nn.BCEWithLogitsLoss):
-            self._cast_labels = lambda x: x.int()
-        elif isinstance(self.criterion, nn.CrossEntropyLoss):
-            self._cast_labels = lambda x: x.long()
-        else:
-            self._cast_labels = lambda x: x
+        # **Always** cast labels to long so metrics get integer targets
+        self._cast_labels = lambda x: x.long()
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -48,24 +48,24 @@ class SimpleTrainer(pl.LightningModule):
     def _activation(self, logits):
         if isinstance(self.criterion, nn.BCEWithLogitsLoss):
             return torch.sigmoid(logits)
-        elif isinstance(self.criterion, nn.CrossEntropyLoss):
+        if isinstance(self.criterion, nn.CrossEntropyLoss):
             return torch.softmax(logits, dim=-1)
-        else:
-            return logits
+        return logits
 
     def _compute_loss(self, logits, labels):
         return self.criterion(logits, labels)
 
     def _update_metrics(self, logits, labels, metrics_dict):
         probs = self._activation(logits)
-        casted_labels = self._cast_labels(labels)
+        labels = self._cast_labels(labels)
         for metric in metrics_dict.values():
-            metric.update(probs, casted_labels)
+            metric.update(probs, labels)
 
     def _compute_and_log_metrics(self, metrics_dict, prefix: str):
         out = []
         for name, metric in metrics_dict.items():
             val = metric.compute()
+            # show AUROC in progress bar if present
             self.log(f"{prefix}_{name}", val, prog_bar=(name == "AUROC"))
             out.append(f"{name}={val:.4f}")
             metric.reset()
@@ -112,9 +112,8 @@ class SimpleTrainer(pl.LightningModule):
         out = self._compute_and_log_metrics(self.test_metrics, prefix="test")
         for line in out:
             print(line)
-
         if self.save_results:
-            fn = self.results_dir / f"test_results{self.run_id}.txt"
+            fn = self.results_dir / f"test_results_run{self.run_id}.txt"
             with open(fn, "a") as f:
                 f.write(f"Run {self.run_id or self.current_epoch}: " + ", ".join(out) + "\n")
 
