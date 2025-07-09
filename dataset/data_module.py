@@ -103,7 +103,7 @@ class UnimodalDataModule(pl.LightningDataModule):
         return DataLoader(
             self.val_ds,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             num_workers=self.num_workers,
             collate_fn=self.collate_fn
         )

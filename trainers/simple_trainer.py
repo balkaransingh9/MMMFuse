@@ -20,20 +20,27 @@ class SimpleTrainer(pl.LightningModule):
         save_results: bool = True,
     ):
         super().__init__()
-        self.save_hyperparameters(ignore=['model','criterion','optimizer','test_metrics'])
+        self.save_hyperparameters(ignore=['model', 'criterion', 'optimizer', 'test_metrics', 'val_metrics'])
 
         self.model = model
         self.criterion = criterion
         self._external_optimizer = optimizer
-        self.test_metrics = nn.ModuleDict(test_metrics)
-        self.val_metrics = nn.ModuleDict(val_metrics)
+        self.test_metrics = nn.ModuleDict(test_metrics or {})
+        self.val_metrics = nn.ModuleDict(val_metrics or {})
         self.task_name = task_name or "default_task"
         self.run_id = run_id or ""
         self.save_results = save_results
 
-        # create results folder once
         self.results_dir = Path("results") / self.task_name
         self.results_dir.mkdir(parents=True, exist_ok=True)
+
+        # Cache label casting function
+        if isinstance(self.criterion, nn.BCEWithLogitsLoss):
+            self._cast_labels = lambda x: x.int()
+        elif isinstance(self.criterion, nn.CrossEntropyLoss):
+            self._cast_labels = lambda x: x.long()
+        else:
+            self._cast_labels = lambda x: x
 
     def forward(self, **batch):
         return self.model(**batch)
@@ -46,11 +53,30 @@ class SimpleTrainer(pl.LightningModule):
         else:
             return logits
 
+    def _compute_loss(self, logits, labels):
+        return self.criterion(logits, labels)
+
+    def _update_metrics(self, logits, labels, metrics_dict):
+        probs = self._activation(logits)
+        casted_labels = self._cast_labels(labels)
+        for metric in metrics_dict.values():
+            metric.update(probs, casted_labels)
+
+    def _compute_and_log_metrics(self, metrics_dict, prefix: str):
+        out = []
+        for name, metric in metrics_dict.items():
+            val = metric.compute()
+            self.log(f"{prefix}_{name}", val, prog_bar=(name == "AUROC"))
+            out.append(f"{name}={val:.4f}")
+            metric.reset()
+        return out
+
     def training_step(self, batch, batch_idx):
         labels = batch["labels"]
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
-        loss = self.criterion(logits, labels)
+
+        loss = self._compute_loss(logits, labels)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
@@ -60,22 +86,12 @@ class SimpleTrainer(pl.LightningModule):
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
 
-        loss = self.criterion(logits, labels)
+        loss = self._compute_loss(logits, labels)
         self.log("val_loss", loss, on_epoch=True, prog_bar=True)
-
-        probs = self._activation(logits)
-        for metric in self.val_metrics.values():
-            metric.update(probs, labels)
+        self._update_metrics(logits, labels, self.val_metrics)
 
     def on_validation_epoch_end(self):
-        # compute & log once per epoch
-        out = []
-        for name, metric in self.val_metrics.items():
-            val = metric.compute()
-            self.log(f"val_{name}", val, prog_bar=(name == "AUROC"))
-            out.append(f"{name}={val:.4f}")
-            metric.reset()
-
+        out = self._compute_and_log_metrics(self.val_metrics, prefix="val")
         if self.save_results:
             fn = self.results_dir / f"validation_results{self.run_id}.txt"
             with open(fn, "a") as f:
@@ -83,27 +99,19 @@ class SimpleTrainer(pl.LightningModule):
 
     @torch.no_grad()
     def test_step(self, batch, batch_idx):
-        # only update metrics, no compute/log here
         labels = batch["labels"]
         inputs = {k: v for k, v in batch.items() if k != "labels"}
         logits = self(**inputs)
-        loss = self.criterion(logits, labels)
-        self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
 
-        probs = self._activation(logits)
-        for metric in self.test_metrics.values():
-            metric.update(probs, labels)
+        loss = self._compute_loss(logits, labels)
+        self.log("test_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self._update_metrics(logits, labels, self.test_metrics)
 
     def on_test_epoch_end(self):
-        # compute, log, print & optionally save once per run
-        out = []
         print("\nFinal Test Results:\n")
-        for name, metric in self.test_metrics.items():
-            val = metric.compute()
-            print(f"{name}: {val:.4f}")
-            self.log(f"test_{name}", val, prog_bar=True)
-            out.append(f"{name}={val:.4f}")
-            metric.reset()
+        out = self._compute_and_log_metrics(self.test_metrics, prefix="test")
+        for line in out:
+            print(line)
 
         if self.save_results:
             fn = self.results_dir / f"test_results{self.run_id}.txt"
