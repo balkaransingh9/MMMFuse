@@ -36,7 +36,7 @@ class MultimodalData(Dataset):
 
         # labels
         if task_type == 'phenotype':
-            extra = ['subject_id','stay','period_length','stay_id','original_split','ecg_path']
+            extra = ['subject_id','stay','period_length','stay_id','original_split','ecg_path', 'ecg', 'text', 'med']
             self.sample_labels = torch.tensor(self.data_split.drop(extra,axis=1).values).float()
         else:
             self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
