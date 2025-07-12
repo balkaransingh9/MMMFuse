@@ -3,7 +3,8 @@ from torch.utils.data import DataLoader
 from .physio_data import PhysioData
 from .text_data import TextData
 from .ecg_data import ECGData
-from .multimodal_data import MultimodalData
+#from .multimodal_data import MultimodalData
+from .multimodal_data_missing import MultimodalData
 
 from .collate.ecg_collate import ECGCollate
 from .collate.multimodal_collate import MultimodalCollate
