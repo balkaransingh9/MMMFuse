@@ -18,6 +18,7 @@ class EHR_LSTMEncoder(nn.Module):
         self.return_cls = return_cls
         self.hidden_dim = hidden_dim
         self.num_directions = 2 if bidirectional else 1
+        self.model_dim = hidden_dim * self.num_directions
 
         # project to hidden_dim
         self.in_proj = nn.Linear(input_dim, hidden_dim)
