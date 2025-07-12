@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.utils.rnn as rnn_utils
+from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
 import math
 
 class EHR_LSTMEncoder(nn.Module):
@@ -32,28 +33,27 @@ class EHR_LSTMEncoder(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, input):
-        # input['pad']: [B, T, input_dim]
-        # input['attention_mask']: [B, T]  where 1=real, 0=pad
         x = self.in_proj(input['pad']) * math.sqrt(self.hidden_dim)
+        mask = input['attention_mask']
 
-        # infer lengths from mask
-        lengths = input['attention_mask'].sum(dim=1).cpu()
-        # pack
-        packed = rnn_utils.pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
+        # compute lengths; any zero-length sequences become length=1
+        lengths = mask.sum(dim=1).cpu()
+        lengths = lengths.clamp(min=1)
+
+        # pack with enforce_sorted=False (you already have that)
+        packed = pack_padded_sequence(x, lengths, batch_first=True, enforce_sorted=False)
         packed_out, (h_n, c_n) = self.lstm(packed)
-        # h_n: [num_layers * num_directions, B, hidden_dim]
 
         if self.return_cls:
-            # take the last layer's hidden state for each direction and concat
-            h_final = h_n.view(self.lstm.num_layers, 
-                               self.num_directions,
-                               x.size(0),
-                               self.hidden_dim)[-1]  # last layer  
-            # shape: [num_directions, B, hidden_dim]
-            h_final = torch.cat([h_final[i] for i in range(self.num_directions)], dim=-1)
-            # shape: [B, hidden_dim * num_directions]
+            # extract the last hidden state
+            # h_n shape: [num_layers * num_directions, B, hidden_dim]
+            num_dirs = 2 if self.lstm.bidirectional else 1
+            # take last layer
+            last_layer = h_n.view(self.lstm.num_layers, num_dirs, x.size(0), self.hidden_dim)[-1]
+            # concat directions
+            h_final = torch.cat([last_layer[i] for i in range(num_dirs)], dim=-1)
             return self.dropout(h_final)
         else:
-            # unpack if you really need the sequence output
-            out, _ = rnn_utils.pad_packed_sequence(packed_out, batch_first=True)
+            # if you also want the full sequence output:
+            out, _ = pad_packed_sequence(packed_out, batch_first=True)
             return self.dropout(out)
