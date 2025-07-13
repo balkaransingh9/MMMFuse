@@ -46,20 +46,21 @@ class SimpleFusion(nn.Module):
             nn.Linear(common_dim, num_classes)
         )
 
-    def forward(self, inputs: dict[str, torch.Tensor], present_mask: torch.Tensor):
+    def forward(self, inputs: dict[str, torch.Tensor], present_mask: dict[str, torch.Tensor]):
         """
         inputs:       mapping modality name → tensor of shape (B, embedding_dims[m])
-        present_mask: (B, M) binary mask indicating which modalities are present
-                      (M == number of modalities, in same order as self.modalities)
+        present_mask: mapping modality name → tensor of shape (B,), 1.0 = present, 0.0 = missing
         """
         projected = []
-        for i, m in enumerate(self.modalities):
-            emb = self.encoders[m](inputs[m])              
-            emb = emb * present_mask[:, i].unsqueeze(-1)  # zero‐out missing
-            emb = self.projections[m](emb)                
+        for m in self.modalities:
+            emb = self.encoders[m](inputs[m])
+            # grab the 1D batch‐mask for this modality and expand to embedding dim
+            mask = present_mask[m].unsqueeze(-1)   # (B,1)
+            emb = emb * mask                       # zero‐out missing
+            emb = self.projections[m](emb)
 
             if self.use_layernorm:
-                emb = self.layer_norms[m](emb)            
+                emb = self.layer_norms[m](emb)
             projected.append(emb)
 
         # fuse

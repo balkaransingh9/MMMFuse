@@ -52,43 +52,57 @@ class SelfAttentionFusion(nn.Module):
             nn.Linear(common_dim, num_classes)
         )
 
-    def forward(self, inputs: dict, present_mask: torch.Tensor):
+    def forward(self, inputs: dict, present_mask: dict[str, torch.Tensor]):
         """
-        inputs: dict of modality→Tensor of shape (B, D_mod)
-        present_mask: Tensor of shape (B, num_modalities) with 1=present, 0=missing
+        inputs: dict of modality → Tensor of shape (B, D_mod)
+        present_mask: dict of modality → Tensor of shape (B,) with 1=present, 0=missing
         """
-        B, device = present_mask.size(0), present_mask.device
+        # grab batch size and device from any one modality
+        first_mod = self.modalities[0]
+        B = present_mask[first_mod].size(0)
+        device = present_mask[first_mod].device
 
+        # encode each modality, zeroing out missing examples
         embedded = []
-        for i, mod in enumerate(self.modalities):
-            emb = self.encoders[mod](inputs[mod])                # (B, E_mod)
-            emb = emb * present_mask[:, i].unsqueeze(-1)        # (B, E_mod)
-            emb = self.norms[mod](self.projections[mod](emb))   # (B, common_dim)
+        for mod in self.modalities:
+            emb = self.encoders[mod](inputs[mod])             # (B, E_mod)
+            mask1d = present_mask[mod].unsqueeze(-1)          # (B, 1)
+            emb = emb * mask1d                                # zero‐out missing
+            emb = self.norms[mod](self.projections[mod](emb)) # (B, common_dim)
             embedded.append(emb)
 
+        # stack modalities → (B, M, common_dim)
         modal_embs = torch.stack(embedded, dim=1)
 
+        # add modality‐type embeddings
         type_idx = torch.arange(self.num_modalities, device=device) \
                         .unsqueeze(0).expand(B, -1)
         modal_embs = modal_embs + self.modality_embedding(type_idx)
 
-        fusion_tok = self.fusion_token.expand(B, -1, -1)       # (B,1,common_dim)
+        # prepend fusion token
+        fusion_tok = self.fusion_token.expand(B, -1, -1)       # (B, 1, common_dim)
         seq_embs = torch.cat([fusion_tok, modal_embs], dim=1)  # (B, M+1, common_dim)
 
+        # add positional embeddings
         pos_idx = torch.arange(self.num_modalities + 1, device=device) \
                        .unsqueeze(0).expand(B, -1)
         seq_embs = seq_embs + self.pos_embedding(pos_idx)
 
+        # build key_padding_mask for transformer: True = mask (i.e. missing)
         fusion_mask = torch.zeros(B, 1, dtype=torch.bool, device=device)
-        modal_mask  = (present_mask == 0)  # (B, M)
+        modal_mask = torch.stack([
+            present_mask[mod] == 0
+            for mod in self.modalities
+        ], dim=1)  # (B, M)
         key_padding_mask = torch.cat([fusion_mask, modal_mask], dim=1)  # (B, M+1)
 
+        # fuse with transformer
         fused = self.fusion_transformer(
             src=seq_embs,
             src_key_padding_mask=key_padding_mask
         )
 
-        # 8) classify based on the fusion token’s output
-        fused_repr = fused[:, 0, :]              # (B, common_dim)
-        out = self.classifier(fused_repr)        # (B, num_classes)
+        # classify on fusion token
+        fused_repr = fused[:, 0, :]       # (B, common_dim)
+        out = self.classifier(fused_repr) # (B, num_classes)
         return out

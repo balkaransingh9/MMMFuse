@@ -90,13 +90,25 @@ class MultimodalCollate:
             seq_data['medicine'] = med_tokenized
 
         # 4) Missing‐modality mask
-        miss_mask = torch.stack([
-            (~torch.tensor(
-                [f.get(f"{mod}_missing", True) for f in flags_list],
+        # miss_mask = torch.stack([
+        #     (~torch.tensor(
+        #         [f.get(f"{mod}_missing", True) for f in flags_list],
+        #         dtype=torch.bool
+        #     ))
+        #     for mod in self.modalities
+        # ], dim=1).float()
+        # updating missing mask to return a dict
+        present_mask = {}
+        for mod in self.modalities:
+            # build a 1D bool tensor of length batch_size,
+            # True = modality is present, False = missing
+            mask = torch.tensor(
+                [ not f.get(f"{mod}_missing", True) for f in flags_list ],
                 dtype=torch.bool
-            ))
-            for mod in self.modalities
-        ], dim=1).float()
+            )
+            present_mask[mod] = mask.float()   # or keep it bool if you prefer
+
+
 
         # 5) Labels
         if self.task_type == 'phenotype':
@@ -108,6 +120,6 @@ class MultimodalCollate:
 
         return {
             "inputs": seq_data,
-            "present_mask": miss_mask,
+            "present_mask": present_mask,
             "labels": labels
         }
