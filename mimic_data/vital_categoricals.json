@@ -1,0 +1,24 @@
+{
+    "GCS - Verbal Response": [
+        "No Response-ETT",
+        "Incomprehensible sounds",
+        "Inappropriate Words",
+        "No Response",
+        "Confused",
+        "Oriented"
+    ],
+    "GCS - Motor Response": [
+        "Abnormal Flexion",
+        "Obeys Commands",
+        "No response",
+        "Abnormal extension",
+        "Flex-withdraws",
+        "Localizes Pain"
+    ],
+    "GCS - Eye Opening": [
+        "no-opening",
+        "To Pain",
+        "Spontaneously",
+        "To Speech"
+    ]
+}

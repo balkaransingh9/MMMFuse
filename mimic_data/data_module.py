@@ -103,7 +103,6 @@ class MultimodalDataModule(pl.LightningDataModule):
                                         task_type=self.task_type, text_max_len=self.text_max_len)
         )
     
-
     def val_dataloader(self):
         return DataLoader(
             self.val_ds,
