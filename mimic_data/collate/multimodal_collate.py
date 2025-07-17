@@ -50,13 +50,13 @@ class MultimodalCollate:
         # 1) Vitals modality
         if 'vital' in self.modalities:
             vital = [o['vital'] for o in outs_list]
-            tokenized_vitals = self.vitals_tok(vital, **self.vitals_kwargs)
+            tokenized_vitals = self.vitals_tok.tokenize(vital, **self.vitals_kwargs)
             seq_data['vital'] = tokenized_vitals
 
         # 2) Labs modality
         if 'lab' in self.modalities:
             lab = [o['lab'] for o in outs_list]
-            tokenized_labs = self.labs_tok(lab, **self.labs_kwargs)
+            tokenized_labs = self.labs_tok.tokenize(lab, **self.labs_kwargs)
             seq_data['lab'] = tokenized_labs
 
         # 3) Medicine modality
