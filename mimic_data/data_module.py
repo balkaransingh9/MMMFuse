@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
 import json 
+from pathlib import Path
 
 #from .multimodal_data import MultimodalData
 from .multimodal_data_missing import MultimodalData
@@ -61,9 +62,11 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.med_tokenizer = MedTokenizer(self.label_vocab, self.unit_vocab,
                                           self.cat_vocab, self.mednorm)
 
-        vital_categoricals_path = 'mimic_data\data_module.py'
+        current_dir = Path(__file__).parent
+        vital_categoricals_path = current_dir / 'vital_categoricals.json'
         with open(vital_categoricals_path, 'r') as f:
             vital_categoricals = json.load(f)
+
 
         discrete_labels = vital_categoricals.keys()
         self.vitalnorm = vital_normaliser(self.listfile, self.lmdb_path_vital, discrete_labels)
