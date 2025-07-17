@@ -80,46 +80,63 @@ def med_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
         }
     }
 
-
-def vital_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
-    train_df = listfile_df[listfile_df[split_feature] == 'train']
+def vital_normaliser(listfile_df, lmdb_path, discrete_labels):
+    """
+    Scans all training stays in your LMDB and computes:
+      - per‐label mean/std of **continuous** vitals
+      - global mean/std of hours_from_intime
+    """
+    # 1) filter to train stays that exist in LMDB
+    train_df = listfile_df[listfile_df['original_split']=='train']
     env = lmdb.open(lmdb_path, readonly=True, lock=False)
-
-    with env.begin() as txn, txn.cursor() as cursor:
-        lmdb_ids = {int(key.decode('utf-8')) for key, _ in cursor}
-
+    with env.begin() as txn, txn.cursor() as cur:
+        lmdb_ids = {int(k.decode()): None for k,_ in cur}
     train_df = train_df[train_df['stay_id'].isin(lmdb_ids)]
-    train_keys = [str(sid).encode('utf-8') for sid in train_df['stay_id']]
+    stay_keys = [str(s).encode() for s in train_df['stay_id']]
 
+    all_labels = []
     all_values = []
-    all_hours = []
+    all_hours  = []
 
     with env.begin() as txn:
-        for key in train_keys:
+        for key in stay_keys:
             raw = txn.get(key)
-            if raw is None:
-                continue
+            if raw is None: continue
             item = pickle.loads(raw)
+            all_labels.extend(item.get('label', []))
             all_values.extend(item.get('value', []))
-            all_hours.extend(item.get('hours_from_intime', []))
-
+            all_hours .extend(item.get('hours_from_intime', []))
     env.close()
 
-    if not all_values or not all_hours:
-        raise RuntimeError("No vitals records found for any training stay.")
+    if not all_hours:
+        raise RuntimeError("No vitals found in training LMDB.")
 
-    vals = np.array(all_values)
-    hrs  = np.array(all_hours)
+    # 2) global hours stats
+    hrs = np.array(all_hours, dtype=float)
+    hours_mean = float(np.mean(hrs))
+    hours_std  = float(np.std (hrs))
+
+    # 3) per‐label stats for continuous labels
+    labels = np.array(all_labels)
+    vals   = np.array(all_values, dtype=float)
+
+    value_stats = {}
+    for lbl in set(all_labels):
+        if lbl in discrete_labels:
+            continue
+        mask = (labels == lbl)
+        arr  = vals[mask]
+        if arr.size == 0:
+            continue
+        value_stats[lbl] = {
+            'mean': float(arr.mean()),
+            'std' : float(arr.std())
+        }
 
     return {
-        'value': {
-            'mean': vals.mean(),
-            'std':   vals.std(ddof=0)
-        },
-        'hours': {
-            'mean': hrs.mean(),
-            'std':   hrs.std(ddof=0)
-        }
+        'value': value_stats,          # label_name → {'mean', 'std'}
+        'hours': {'mean': hours_mean,
+                  'std' : hours_std}
     }
 
 def lab_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
