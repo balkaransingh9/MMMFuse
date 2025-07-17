@@ -82,61 +82,70 @@ def med_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
 
 def vital_normaliser(listfile_df, lmdb_path, discrete_labels):
     """
-    Scans all training stays in your LMDB and computes:
-      - per‐label mean/std of **continuous** vitals
+    Scans all training stays in LMDB and computes:
+      - per‐label mean/std for continuous vitals only
       - global mean/std of hours_from_intime
     """
-    # 1) filter to train stays that exist in LMDB
+    # 1) Filter to train stays in LMDB
     train_df = listfile_df[listfile_df['original_split']=='train']
     env = lmdb.open(lmdb_path, readonly=True, lock=False)
     with env.begin() as txn, txn.cursor() as cur:
         lmdb_ids = {int(k.decode()): None for k,_ in cur}
     train_df = train_df[train_df['stay_id'].isin(lmdb_ids)]
     stay_keys = [str(s).encode() for s in train_df['stay_id']]
-
-    all_labels = []
-    all_values = []
-    all_hours  = []
-
+    
+    # 2) Accumulate raw values
+    per_label_vals = {}   # label_name → list of floats
+    all_hours = []
+    
     with env.begin() as txn:
         for key in stay_keys:
             raw = txn.get(key)
-            if raw is None: continue
+            if raw is None:
+                continue
             item = pickle.loads(raw)
-            all_labels.extend(item.get('label', []))
-            all_values.extend(item.get('value', []))
-            all_hours .extend(item.get('hours_from_intime', []))
+            
+            labels = item.get('label', [])
+            values = item.get('value', [])
+            hours  = item.get('hours_from_intime', [])
+            
+            # record hours
+            all_hours.extend(hours)
+            
+            # for each (label, value) pair
+            for lbl, val in zip(labels, values):
+                if lbl in discrete_labels:
+                    continue  # skip strings entirely
+                try:
+                    fv = float(val)
+                except Exception:
+                    continue  # skip any non‑floatable junk
+                per_label_vals.setdefault(lbl, []).append(fv)
+    
     env.close()
-
+    
+    # 3) Compute global hours stats
     if not all_hours:
-        raise RuntimeError("No vitals found in training LMDB.")
-
-    # 2) global hours stats
+        raise RuntimeError("No hours found in training data.")
     hrs = np.array(all_hours, dtype=float)
-    hours_mean = float(np.mean(hrs))
-    hours_std  = float(np.std (hrs))
-
-    # 3) per‐label stats for continuous labels
-    labels = np.array(all_labels)
-    vals   = np.array(all_values, dtype=float)
-
+    hours_mean = float(hrs.mean())
+    hours_std  = float(hrs.std())
+    
+    # 4) Compute per‑label continuous stats
     value_stats = {}
-    for lbl in set(all_labels):
-        if lbl in discrete_labels:
+    for lbl, arr in per_label_vals.items():
+        if len(arr) < 2:
+            # not enough data
             continue
-        mask = (labels == lbl)
-        arr  = vals[mask]
-        if arr.size == 0:
-            continue
+        a = np.array(arr, dtype=float)
         value_stats[lbl] = {
-            'mean': float(arr.mean()),
-            'std' : float(arr.std())
+            'mean': float(a.mean()),
+            'std':  float(a.std())
         }
-
+    
     return {
-        'value': value_stats,          # label_name → {'mean', 'std'}
-        'hours': {'mean': hours_mean,
-                  'std' : hours_std}
+        'value': value_stats,        # e.g. {'Heart Rate': {'mean':..., 'std':...}, ...}
+        'hours': {'mean': hours_mean, 'std': hours_std}
     }
 
 def lab_normaliser(listfile_df, lmdb_path, split_feature='original_split'):

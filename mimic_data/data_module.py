@@ -54,13 +54,13 @@ class MultimodalDataModule(pl.LightningDataModule):
 
 
         self.mednorm = med_normaliser(self.listfile, self.lmdb_path_medicine)
-        self.label_vocab = build_vocab(self.lmdb_path_medicine, 'label')
-        self.unit_vocab = build_vocab(self.lmdb_path_medicine, 'amount_std_uom')
-        self.cat_vocab = build_vocab(self.lmdb_path_medicine, 'ordercategoryname')
+        self.med_label_vocab = build_vocab(self.lmdb_path_medicine, 'label')
+        self.med_unit_vocab = build_vocab(self.lmdb_path_medicine, 'amount_std_uom')
+        self.med_cat_vocab = build_vocab(self.lmdb_path_medicine, 'ordercategoryname')
 
         self.text_tokenizer = AutoTokenizer.from_pretrained(text_model_name)
-        self.med_tokenizer = MedTokenizer(self.label_vocab, self.unit_vocab,
-                                          self.cat_vocab, self.mednorm)
+        self.med_tokenizer = MedTokenizer(self.med_label_vocab, self.med_unit_vocab,
+                                          self.med_cat_vocab, self.mednorm)
 
         current_dir = Path(__file__).parent
         vital_categoricals_path = current_dir / 'vital_categoricals.json'
@@ -70,11 +70,13 @@ class MultimodalDataModule(pl.LightningDataModule):
 
         discrete_labels = vital_categoricals.keys()
         self.vitalnorm = vital_normaliser(self.listfile, self.lmdb_path_vital, discrete_labels)
-        self.vitals_tokenizer = VitalTokenizer(label_vocab=build_vocab(self.lmdb_path_vital, 'label'), 
+        self.vital_label_vocab = build_vocab(self.lmdb_path_vital, 'label')
+        self.vitals_tokenizer = VitalTokenizer(label_vocab=self.vital_label_vocab, 
                                              vitalnorm=self.vitalnorm, discrete_label_categorical_values=vital_categoricals)
 
         self.labnorm = lab_normaliser(self.listfile, self.lmdb_path_lab)
-        self.labs_tokenizer = LabTokenizer(label_vocab=build_vocab(self.lmdb_path_lab, 'label'), 
+        self.lab_label_vocab = build_vocab(self.lmdb_path_lab, 'label')
+        self.labs_tokenizer = LabTokenizer(label_vocab=build_vocab(self.lab_label_vocab, 'label'), 
                                            labnorm=self.labnorm)
 
 
