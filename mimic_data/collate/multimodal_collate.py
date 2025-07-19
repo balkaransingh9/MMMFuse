@@ -46,6 +46,8 @@ class MultimodalCollate:
         self.labs_kwargs   = labs_kwargs  or {}
         self.text_kwargs  = text_kwargs or {}
         self.med_kwargs   = med_kwargs  or {}
+        self.output_kwargs = output_kwargs or {}
+        self.procedure_kwargs = procedure_kwargs or {}
 
     def __call__(self, batch):
         outs_list, flags_list, labels_list = zip(*batch)
