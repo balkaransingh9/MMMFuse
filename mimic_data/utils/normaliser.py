@@ -148,7 +148,7 @@ def vital_normaliser(listfile_df, lmdb_path, discrete_labels):
         'hours': {'mean': hours_mean, 'std': hours_std}
     }
 
-def lab_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
+def value_hour_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
     train_df = listfile_df[listfile_df[split_feature] == 'train']
     env = lmdb.open(lmdb_path, readonly=True, lock=False)
 
@@ -182,6 +182,47 @@ def lab_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
         'value': {
             'mean': vals.mean(),
             'std':   vals.std(ddof=0)
+        },
+        'hours': {
+            'mean': hrs.mean(),
+            'std':   hrs.std(ddof=0)
+        }
+    }
+
+def procedure_normaliser(listfile_df, lmdb_path, split_feature='original_split'):
+    train_df = listfile_df[listfile_df[split_feature] == 'train']
+    env = lmdb.open(lmdb_path, readonly=True, lock=False)
+
+    with env.begin() as txn, txn.cursor() as cursor:
+        lmdb_ids = {int(key.decode('utf-8')) for key, _ in cursor}
+
+    train_df = train_df[train_df['stay_id'].isin(lmdb_ids)]
+    train_keys = [str(sid).encode('utf-8') for sid in train_df['stay_id']]
+
+    all_duration = []
+    all_hours = []
+
+    with env.begin() as txn:
+        for key in train_keys:
+            raw = txn.get(key)
+            if raw is None:
+                continue
+            item = pickle.loads(raw)
+            all_duration.extend(item.get('procedure_duration', []))
+            all_hours.extend(item.get('hours_from_intime', []))
+
+    env.close()
+
+    if not all_duration or not all_hours:
+        raise RuntimeError("No labs records found for any training stay.")
+
+    duration = np.array(all_duration)
+    hrs  = np.array(all_hours)
+
+    return {
+        'duration': {
+            'mean': duration.mean(),
+            'std':   duration.std(ddof=0)
         },
         'hours': {
             'mean': hrs.mean(),

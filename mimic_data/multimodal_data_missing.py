@@ -16,6 +16,8 @@ class MultimodalData(Dataset):
         lmdb_path_lab='none',
         lmdb_path_text='none',
         lmdb_path_medicine='none',
+        lmdb_path_procedure='none',
+        lmdb_path_output='none',
     ):
         self.list_file      = list_file
         self.modalities     = modalities
@@ -40,7 +42,9 @@ class MultimodalData(Dataset):
 
         # keys for LMDB
         self.vital_keys = [s.encode('utf-8') for s in self.data_split['vital'].astype(str)]
-        self.lab_keys = [s.encode('utf-8') for s in self.data_split['lab'].astype(str)]        
+        self.lab_keys = [s.encode('utf-8') for s in self.data_split['lab'].astype(str)]
+        self.procedure_keys = [s.encode('utf-8') for s in self.data_split['procedure'].astype(str)]
+        self.output_keys = [s.encode('utf-8') for s in self.data_split['output'].astype(str)]
         self.med_keys = [s.encode('utf-8') for s in self.data_split['med'].astype(str)]
         self.text_keys = [s.encode('utf-8') for s in self.data_split['text'].astype(str)]
 
@@ -48,6 +52,8 @@ class MultimodalData(Dataset):
         self.lmdb_paths = {
             'vital':   lmdb_path_vital,
             'lab':      lmdb_path_lab,
+            'procedure': lmdb_path_procedure,
+            'output':    lmdb_path_output,
             'text':     lmdb_path_text,
             'medicine': lmdb_path_medicine,
         }
@@ -85,6 +91,20 @@ class MultimodalData(Dataset):
     def _load_lab(self, idx):
         self._open_env('lab')
         raw = self.envs['lab_txn'].get(self.lab_keys[idx])
+        if raw is None:
+            return None, True
+        return pickle.loads(raw), False
+
+    def _load_procedure(self, idx):
+        self._open_env('procedure')
+        raw = self.envs['procedure_txn'].get(self.procedure_keys[idx])
+        if raw is None:
+            return None, True
+        return pickle.loads(raw), False
+
+    def _load_output(self, idx):
+        self._open_env('output')
+        raw = self.envs['output_txn'].get(self.output_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
