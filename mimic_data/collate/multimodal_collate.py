@@ -9,6 +9,8 @@ class MultimodalCollate:
         labs_tokenizer,
         med_tokenizer,
         text_tokenizer,
+        output_tokenizer,
+        procedure_tokenizer,
         task_type='phenotype',
         text_max_len=512,
         vitals_kwargs=None,
@@ -34,6 +36,8 @@ class MultimodalCollate:
         self.labs_tok     = labs_tokenizer
         self.med_tok      = med_tokenizer
         self.text_tok     = text_tokenizer
+        self.output_tok   = output_tokenizer
+        self.procedure_tok = procedure_tokenizer
         self.task_type    = task_type
         self.text_max_len = text_max_len
         self.vitals_kwargs = vitals_kwargs or {}
@@ -65,6 +69,17 @@ class MultimodalCollate:
             med_tokenized = self.med_tok.tokenize(meds, **self.med_kwargs)
             seq_data['medicine'] = med_tokenized
         
+        if 'output' in self.modalities:
+            output = [o['output'] for o in outs_list]
+            output_tokenized = self.output_tok.tokenize(output, **self.output_kwargs)
+            seq_data['output'] = output_tokenized
+
+        if 'procedure' in self.modalities:
+            procedure = [o['procedure'] for o in outs_list]
+            procedure_tokenized = self.procedure_tok.tokenize(procedure, **self.procedure_kwargs)
+            seq_data['procedure'] = procedure_tokenized
+
+
         # 4) Text modality
         if 'text' in self.modalities:
             texts = [o['text'] for o in outs_list]
