@@ -102,7 +102,7 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.output_norm = value_hour_normaliser(self.listfile, self.lmdb_path_output)
         self.output_label_vocab = build_vocab(self.lmdb_path_output, 'label')
         self.output_tokenizer = OutputTokenizer(label_vocab=self.output_label_vocab,
-                                                outputnorm=self.output_norm)
+                                                outnorm=self.output_norm)
 
 
     def prepare_data(self):
