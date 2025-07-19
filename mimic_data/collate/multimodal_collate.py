@@ -16,7 +16,9 @@ class MultimodalCollate:
         vitals_kwargs=None,
         labs_kwargs=None,
         text_kwargs=None,
-        med_kwargs=None
+        med_kwargs=None,
+        output_kwargs=None,
+        procedure_kwargs=None,
     ):
         """
         Args:
