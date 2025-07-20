@@ -35,4 +35,5 @@ class MedTokenizer:
             'value': med_value_pad,
             'unit': med_unit_pad,
             'category': med_cat_pad,
+            'mask': med_mask
         }
