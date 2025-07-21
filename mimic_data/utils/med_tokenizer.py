@@ -26,7 +26,7 @@ class MedTokenizer:
                 med_cat_pad[i, :l] = torch.tensor([self.cat_vocab.get(i) for i in m['ordercategoryname']])
                 med_value_pad[i, :l] = torch.tensor((m['amount_std_value'] - self.mednorm['value']['mean']) / self.mednorm['value']['std'])
                 med_hours_norm_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.mednorm['hours']['mean']) / self.mednorm['hours']['std'])
-                med_hours_pad[i, :l] = m['hours_from_intime']
+                med_hours_pad[i, :l] = torch.tensor(m['hours_from_intime'])
                 med_mask[i, l:] = True
             else:
                 med_mask[i, :] = True

@@ -20,7 +20,7 @@ class LabTokenizer:
                 lab_label_pad[i, :l] = torch.tensor([self.label_vocab.get(i) for i in m['label']])
                 lab_value_pad[i, :l] = torch.tensor((m['value'] - self.labnorm['value']['mean']) / self.labnorm['value']['std'])
                 lab_hours_norm_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.labnorm['hours']['mean']) / self.labnorm['hours']['std'])
-                lab_hours[i, :l] = m['hours_from_intime']
+                lab_hours[i, :l] = torch.tensor(m['hours_from_intime'])
                 lab_mask[i, l:] = True
             else:
                 lab_mask[i, :] = True

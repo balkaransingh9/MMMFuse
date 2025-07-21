@@ -20,7 +20,7 @@ class OutputTokenizer:
                 out_label_pad[i, :l] = torch.tensor([self.label_vocab.get(i) for i in m['label']])
                 out_value_pad[i, :l] = torch.tensor((m['value'] - self.outnorm['value']['mean']) / self.outnorm['value']['std'])
                 out_hours_norm_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.outnorm['hours']['mean']) / self.outnorm['hours']['std'])
-                out_hours_pad[i, :l] = m['hours_from_intime']
+                out_hours_pad[i, :l] = torch.tensor(m['hours_from_intime'])
                 out_mask[i, l:] = True
             else:
                 out_mask[i, :] = True
