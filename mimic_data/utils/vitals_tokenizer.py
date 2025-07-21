@@ -39,6 +39,7 @@ class VitalTokenizer:
         values_pad   = torch.zeros((B, L), dtype=torch.float32)
         vid_pad      = torch.zeros((B, L), dtype=torch.long)
         hours_pad    = torch.zeros((B, L), dtype=torch.float32)
+        hours_norm_pad = torch.zeros((B, L), dtype=torch.float32)
         mask_pad     = torch.ones ((B, L), dtype=torch.bool)
 
         for i, rec in enumerate(batch):
@@ -56,10 +57,12 @@ class VitalTokenizer:
                 dtype=torch.long
             )
             # hours → normalize
-            hours_pad[i, :length] = torch.tensor([
+            hours_norm_pad[i, :length] = torch.tensor([
                 (h - self.hrs_mean) / (self.hrs_std + 1e-6)
                 for h in hrs
             ], dtype=torch.float32)
+
+            hours_pad[i, :length] = torch.tensor(hrs, dtype=torch.float32)
 
             # values → either continuous norm or categorical ID
             for j, l in enumerate(lbls):
@@ -83,5 +86,6 @@ class VitalTokenizer:
             'value'   : values_pad,    # float
             'value_id': vid_pad,       # long
             'hours'   : hours_pad,     # float
+            'hours_norm': hours_norm_pad, # float
             'mask'    : mask_pad       # bool
         }

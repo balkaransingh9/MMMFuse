@@ -11,6 +11,7 @@ class ProcedureTokenizer:
         proc_label_pad = torch.zeros(B, L).long()
         proc_duration_pad = torch.zeros(B, L)
         proc_hours_pad = torch.zeros(B, L)
+        proc_hours_norm_pad = torch.zeros(B, L)
         proc_mask = torch.zeros(B, L, dtype=torch.bool)
 
         for i, m in enumerate(proc):
@@ -18,13 +19,15 @@ class ProcedureTokenizer:
                 l = len(m['label'])
                 proc_label_pad[i, :l] = torch.tensor([self.label_vocab.get(i) for i in m['label']])
                 proc_duration_pad[i, :l] = torch.tensor((m['procedure_duration'] - self.procnorm['duration']['mean']) / self.procnorm['duration']['std'])
-                proc_hours_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.procnorm['hours']['mean']) / self.procnorm['hours']['std'])
+                proc_hours_norm_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.procnorm['hours']['mean']) / self.procnorm['hours']['std'])
+                proc_hours_pad[i, :l] = m['hours_from_intime']
                 proc_mask[i, l:] = True
             else:
                 proc_mask[i, :] = True
 
         return {
             'hours': proc_hours_pad,
+            'hours_norm': proc_hours_norm_pad,
             'duration': proc_duration_pad,
             'label': proc_label_pad,
             'mask': proc_mask

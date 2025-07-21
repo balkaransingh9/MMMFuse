@@ -15,6 +15,7 @@ class MedTokenizer:
         med_cat_pad = torch.zeros(B, L).long()
         med_value_pad = torch.zeros(B, L)
         med_hours_pad = torch.zeros(B, L)
+        med_hours_norm_pad = torch.zeros(B, L)
         med_mask = torch.zeros(B, L, dtype=torch.bool)
 
         for i, m in enumerate(meds):
@@ -24,13 +25,15 @@ class MedTokenizer:
                 med_unit_pad[i, :l] = torch.tensor([self.unit_vocab.get(i) for i in m['amount_std_uom']])
                 med_cat_pad[i, :l] = torch.tensor([self.cat_vocab.get(i) for i in m['ordercategoryname']])
                 med_value_pad[i, :l] = torch.tensor((m['amount_std_value'] - self.mednorm['value']['mean']) / self.mednorm['value']['std'])
-                med_hours_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.mednorm['hours']['mean']) / self.mednorm['hours']['std'])
+                med_hours_norm_pad[i, :l] = torch.tensor((m['hours_from_intime'] - self.mednorm['hours']['mean']) / self.mednorm['hours']['std'])
+                med_hours_pad[i, :l] = m['hours_from_intime']
                 med_mask[i, l:] = True
             else:
                 med_mask[i, :] = True
 
         return {
             'hours': med_hours_pad,
+            'hours_norm': med_hours_norm_pad,
             'label': med_id_pad,
             'value': med_value_pad,
             'unit': med_unit_pad,
