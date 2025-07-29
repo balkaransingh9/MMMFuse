@@ -78,7 +78,7 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.vitalnorm = vital_normaliser(self.listfile, self.lmdb_path_vital, discrete_labels)
         self.vital_label_vocab = build_vocab(self.lmdb_path_vital, 'label')
         self.vitals_tokenizer = VitalTokenizer(label_vocab=self.vital_label_vocab, 
-                                             vitalnorm=self.vitalnorm, discrete_label_categorical_values=vital_categoricals)
+                                             vitalnorm=self.vitalnorm)
         
         self.discrete_vital2num_categories = {
             self.vital_label_vocab[name]: len(categories)
