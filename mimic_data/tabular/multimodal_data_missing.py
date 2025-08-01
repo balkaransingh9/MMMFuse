@@ -123,4 +123,4 @@ class MultimodalData(Dataset):
         raw = self.envs['text_txn'].get(self.text_keys[idx])
         if raw is None:
             return "", True
-        return raw.decode('utf-8'), False
+        return pickle.loads(raw), False
