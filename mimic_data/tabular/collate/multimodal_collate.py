@@ -1,5 +1,6 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from .utils.text_batch_tokenizer import process_text_batch_with_mask
 
 class MultimodalCollate:
     def __init__(
@@ -85,17 +86,28 @@ class MultimodalCollate:
 
 
         # 4) Text modality
+        # if 'text' in self.modalities:
+        #     texts = [o['text'] for o in outs_list]
+        #     tokenized = self.text_tok(
+        #         texts,
+        #         padding='longest',
+        #         truncation=True,
+        #         max_length=self.text_max_len,
+        #         return_tensors='pt',
+        #         **self.text_kwargs
+        #     )
+        #     seq_data['text'] = tokenized
+
         if 'text' in self.modalities:
             texts = [o['text'] for o in outs_list]
-            tokenized = self.text_tok(
+            tokenized = process_text_batch_with_mask(
                 texts,
-                padding='longest',
-                truncation=True,
+                self.text_tok,
                 max_length=self.text_max_len,
-                return_tensors='pt',
-                **self.text_kwargs
+                num_notes=5
             )
             seq_data['text'] = tokenized
+        
 
         # 4) Missing‐modality mask
         present_mask = {}
