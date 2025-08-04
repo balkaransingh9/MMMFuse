@@ -1,6 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from MMMFuse.mimic_data.tabular.utils.text_batch_tokenizer import process_text_batch_with_mask
+from MMMFuse.mimic_data.tabular.utils.text_embed_tokenizer import prepare_embedding_batch
 
 class MultimodalCollate:
     def __init__(
@@ -98,16 +99,19 @@ class MultimodalCollate:
         #     )
         #     seq_data['text'] = tokenized
 
+        # if 'text' in self.modalities:
+        #     texts = [o['text'] for o in outs_list]
+        #     tokenized = process_text_batch_with_mask(
+        #         texts,
+        #         self.text_tok,
+        #         max_length=self.text_max_len,
+        #         num_notes=5
+        #     )
+        #     seq_data['text'] = tokenized
         if 'text' in self.modalities:
             texts = [o['text'] for o in outs_list]
-            tokenized = process_text_batch_with_mask(
-                texts,
-                self.text_tok,
-                max_length=self.text_max_len,
-                num_notes=5
-            )
+            tokenized = prepare_embedding_batch(texts, num_notes=5)
             seq_data['text'] = tokenized
-        
 
         # 4) Missing‐modality mask
         present_mask = {}
