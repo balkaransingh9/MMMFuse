@@ -41,8 +41,8 @@ def prepare_embedding_batch(batch, num_notes=5):
         padded_times_list.append(torch.tensor(final_times, dtype=torch.float32))
         time_masks_list.append(torch.tensor(time_mask, dtype=torch.long))
 
-    return (
-        torch.stack(padded_embeddings_list),
-        torch.stack(padded_times_list),
-        torch.stack(time_masks_list)
-    )
+    return {
+        'embeddings' : torch.stack(padded_embeddings_list),
+        'note_times' : torch.stack(padded_times_list),
+        'note_time_masks' : torch.stack(time_masks_list)
+    }
