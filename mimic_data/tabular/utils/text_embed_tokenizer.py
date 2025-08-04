@@ -1,45 +1,55 @@
 import torch
 import numpy as np
 
-def prepare_embedding_batch(batch, num_notes=5):
-    """
-    Pads and batches pre-computed embeddings and their timestamps.
-    This function can be used as a collate_fn in a DataLoader.
-
-    Args:
-        batch (list): A list of dictionaries from your dataset.
-        num_notes (int): The fixed number of notes to pad/truncate to.
-
-    Returns:
-        A tuple of tensors: (padded_embeddings, padded_times, time_masks)
-    """
+def prepare_embedding_batch(batch, num_notes=5, embedding_dim=768):
     padded_embeddings_list = []
     padded_times_list = []
     time_masks_list = []
 
+    # default tensors to use for any invalid/missing sample
+    default_embeddings = torch.zeros(num_notes, embedding_dim, dtype=torch.float32)
+    default_times = torch.full((num_notes,), -1.0, dtype=torch.float32)
+    default_mask = torch.zeros(num_notes, dtype=torch.long)
+
+    # case where the entire batch is None or empty
+    if batch is None or not batch:
+        return {
+            'embeddings' : torch.empty(0, num_notes, embedding_dim),
+            'note_times' : torch.empty(0, num_notes),
+            'note_time_masks' : torch.empty(0, num_notes, dtype=torch.long)
+        }
+
     for sample in batch:
-        embeddings = torch.from_numpy(sample['embeddings'])
-        times = sample['hours_from_intime']
+        is_invalid = (
+            sample is None or
+            'embeddings' not in sample or
+            sample['embeddings'].shape[0] == 0
+        )
 
-        embeddings = embeddings[:num_notes]
-        times = times[:num_notes]
+        if is_invalid:
+            padded_embeddings_list.append(default_embeddings)
+            padded_times_list.append(default_times)
+            time_masks_list.append(default_mask)
+            continue # Skip to the next sample in the batch
 
-        num_real_notes = embeddings.shape[0]
-        embedding_dim = embeddings.shape[1]
+        final_embeddings = torch.zeros(num_notes, embedding_dim, dtype=torch.float32)
+        final_times = torch.full((num_notes,), -1.0, dtype=torch.float32)
+        final_mask = torch.zeros(num_notes, dtype=torch.long)
         
-        num_padding = num_notes - num_real_notes
-        if num_padding > 0:
-            pad_tensor = torch.zeros(num_padding, embedding_dim, dtype=torch.float32)
-            final_embeddings = torch.cat([embeddings, pad_tensor], dim=0)
-        else:
-            final_embeddings = embeddings
-            
-        final_times = times + [-1.0] * num_padding
-        time_mask = [1] * num_real_notes + [0] * num_padding
+        embeddings = torch.from_numpy(sample['embeddings'])
+        times = torch.tensor(sample.get('hours_from_intime', []), dtype=torch.float32)
+        
+        num_to_copy = min(embeddings.shape[0], num_notes)
+        final_embeddings[:num_to_copy] = embeddings[:num_to_copy]
+        
+        num_times_to_copy = min(len(times), num_to_copy)
+        final_times[:num_times_to_copy] = times[:num_times_to_copy]
+        
+        final_mask[:num_to_copy] = 1 # Set mask to 1 for real data
 
         padded_embeddings_list.append(final_embeddings)
-        padded_times_list.append(torch.tensor(final_times, dtype=torch.float32))
-        time_masks_list.append(torch.tensor(time_mask, dtype=torch.long))
+        padded_times_list.append(final_times)
+        time_masks_list.append(final_mask)
 
     return {
         'embeddings' : torch.stack(padded_embeddings_list),
