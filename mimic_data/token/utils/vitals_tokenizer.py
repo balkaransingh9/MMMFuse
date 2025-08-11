@@ -1,7 +1,8 @@
 import torch
 
 class VitalTokenizer:
-    def __init__(self, label_vocab, vitalnorm, discrete_label_categorical_values, pad_idx=0):
+    def __init__(self, label_vocab, vitalnorm, 
+                 discrete_label_categorical_values=None, pad_idx=0):
         self.vital_label_vocab = label_vocab
 
         self.vital_value_normaliser = vitalnorm['value']
