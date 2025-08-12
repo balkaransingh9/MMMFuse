@@ -14,7 +14,7 @@ def prepare_embedding_batch(batch, num_notes=5, embedding_dim=768):
         return {
             'embeddings' : torch.empty(0, num_notes, embedding_dim),
             'note_times' : torch.empty(0, num_notes),
-            'note_time_masks' : torch.empty(0, num_notes, dtype=torch.long)
+            'mask' : torch.empty(0, num_notes, dtype=torch.long)
         }
 
     for sample in batch:
