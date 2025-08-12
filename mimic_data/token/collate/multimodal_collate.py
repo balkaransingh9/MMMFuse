@@ -1,7 +1,7 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from MMMFuse.mimic_data.tabular.utils.text_batch_tokenizer import process_text_batch_with_mask
-from MMMFuse.mimic_data.tabular.utils.text_embed_tokenizer import prepare_embedding_batch
+from MMMFuse.mimic_data.token.utils.text_batch_tokenizer import process_text_batch_with_mask
+from MMMFuse.mimic_data.token.utils.text_embed_tokenizer import prepare_embedding_batch
 
 class MultimodalCollate:
     def __init__(
