@@ -2,138 +2,149 @@ import numpy as np
 import torch
 
 
-def F_impute(X, tt, mask, duration=1, tt_max=48):
+def _forward_fill(values_2d: np.ndarray, start_fill: float = 0.0) -> np.ndarray:
     """
-    Discretize into duration-hour bins over [0, tt_max) and forward-fill (LOCF).
-
-    Args:
-        X   : (T, F) float32   values at unique timestamps
-        tt  : (T,) float32     timestamps in hours (can be any float in [0, tt_max))
-        mask: (T, F) {0,1}     observation mask
-        duration: bin width (hrs)
-        tt_max : max time horizon (hrs)
-
-    Returns:
-        (tt_max // duration, F*2) float32  -> [values_ffill | masks]
+    Forward-fill each column independently. Leading NaNs are replaced with start_fill.
+    values_2d: (R, C) with NaNs where unknown.
     """
-    n_bins = tt_max // duration
-    n_feat = X.shape[1]
+    R, C = values_2d.shape
+    out = np.empty_like(values_2d, dtype=np.float32)
 
-    temp_values = np.full((n_bins, n_feat), np.nan, dtype=np.float32)
-    temp_masks  = np.zeros((n_bins, n_feat), dtype=np.float32)
+    for c in range(C):
+        col = values_2d[:, c]
+        not_nan = ~np.isnan(col)
+        # last valid index up to each row; -1 where none yet
+        last_idx = np.where(not_nan, np.arange(R), -1)
+        last_idx = np.maximum.accumulate(last_idx)
 
-    # Last observation wins inside each bin
-    for i in range(len(tt)):
-        row = int(tt[i] // duration)
-        if 0 <= row < n_bins:
-            # write all features observed at this time index
-            for f in range(n_feat):
-                if mask[i, f] == 1:
-                    temp_values[row, f] = X[i, f]
-                    temp_masks[row, f]  = 1.0
+        filled = np.where(last_idx >= 0, col[last_idx], np.float32(start_fill))
+        out[:, c] = filled
 
-    # Forward fill (start from 0.0 if no prior observation)
-    for f in range(n_feat):
-        last = 0.0
-        for r in range(n_bins):
-            if not np.isnan(temp_values[r, f]):
-                last = temp_values[r, f]
-            else:
-                temp_values[r, f] = last
-
-    out = np.zeros((n_bins, n_feat * 2), dtype=np.float32)
-    out[:, :n_feat] = temp_values
-    out[:, n_feat:] = temp_masks
     return out
 
 
 class MedTokenizer:
     """
-    Produces an hourly-binned, forward-filled table with labels as columns.
+    Tabular/discretized medication grid (similar to your vitals reg_ts).
 
-    Output:
-        {
-          'reg_ts':  FloatTensor (B, 48, F*2)  # first F = values, last F = masks
-          'columns': List[str]                 # label order for the first F cols
-        }
+    For each sample:
+      - Time is binned into duration-hour bins over [0, tt_max].
+      - Within each bin and medication label, the last observed value wins.
+      - Then we forward-fill across time (LOCF).
+      - Output per sample is shape (n_bins, 2*F): [values_ffill | masks].
+
+    Inputs per sample dict `m` (same keys you already have):
+      m['label']              : list[str]   medication names
+      m['amount_std_value']   : list[float] standardised numeric amounts
+      m['hours_from_intime']  : list[float] timestamps in hours (0..tt_max)
+
+    Args to __init__:
+      label_vocab : dict[str,int]  vocabulary of medication labels
+      unit_vocab  : (ignored)
+      cat_vocab   : (ignored)
+      mednorm     : dict with:
+                    mednorm['value']['mean'], mednorm['value']['std'] (scalars)
+
+    Returns from tokenize(meds, tt_max=48, duration=1):
+      {
+        'values': FloatTensor of shape (B, n_bins, 2*F)
+      }
     """
-    def __init__(self, label_vocab, unit_vocab=None, cat_vocab=None, mednorm=None,
-                 duration=1, tt_max=48):
-        # Fix a stable column order from label_vocab ids (ascending)
-        # label_vocab: dict[str -> int]
-        self.columns = [lbl for lbl, _ in sorted(label_vocab.items(), key=lambda kv: kv[1])]
-        self.label2idx = {lbl: i for i, lbl in enumerate(self.columns)}
-        self.n_features = len(self.columns)
+    def __init__(self, label_vocab, unit_vocab=None, cat_vocab=None, mednorm=None):
+        self.label_vocab = label_vocab or {}
+        self.mednorm = mednorm or {'value': {'mean': 0.0, 'std': 1.0}}
 
-        # params for binning
-        self.duration = duration
-        self.tt_max = tt_max
+        # Build a stable column order from label_vocab indices if they look contiguous,
+        # otherwise just sort by label name.
+        try:
+            items = sorted(self.label_vocab.items(), key=lambda kv: int(kv[1]))
+        except Exception:
+            items = sorted(self.label_vocab.items(), key=lambda kv: kv[0])
 
-        # (We ignore unit/category as requested; mednorm not used here.)
+        self.labels_ordered = [k for k, _ in items]
+        self.label2col = {lbl: i for i, lbl in enumerate(self.labels_ordered)}
+        self.n_features = len(self.labels_ordered)
 
-    def tokenize(self, meds):
+        self._val_mean = float(self.mednorm.get('value', {}).get('mean', 0.0))
+        self._val_std  = float(self.mednorm.get('value', {}).get('std',  1.0))
+
+    def tokenize(self, meds, tt_max: int = 48, duration: int = 1):
         """
-        meds: list of dicts (one per sample), each with:
-            'label'              : list[str]
-            'amount_std_value'   : list[float]
-            'hours_from_intime'  : list[float]
+        Args:
+          meds: list[dict|None]
+          tt_max: max hours (inclusive end clamped into last bin)
+          duration: bin width in hours (e.g., 1 -> hourly bins)
 
         Returns:
-            dict with:
-              'reg_ts':  torch.FloatTensor (B, tt_max//duration, F*2)
-              'columns': list[str] of length F
+          {'values': torch.FloatTensor(B, n_bins, 2*F)}
         """
         B = len(meds)
-        n_bins = self.tt_max // self.duration
-        reg_list = []
+        F = self.n_features
+        n_bins = int(tt_max // duration)
 
-        for m in meds:
-            # Handle empty / None sample
-            if not m or len(m.get('label', [])) == 0:
-                reg_list.append(np.zeros((n_bins, self.n_features * 2), dtype=np.float32))
+        # Prepare output container
+        batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
+
+        for i, m in enumerate(meds):
+            if not m:
+                # No meds for this sample → zeros (values=0 via start_fill, masks=0)
                 continue
 
-            labs = np.asarray(m['label'], dtype=object)
-            vals = np.asarray(m['amount_std_value'], dtype=np.float32)
-            hrs  = np.asarray(m['hours_from_intime'], dtype=np.float32)
+            labels = m.get('label', [])
+            vals   = m.get('amount_std_value', [])
+            hours  = m.get('hours_from_intime', [])
 
-            # Keep only known labels
-            valid = np.array([lbl in self.label2idx for lbl in labs], dtype=bool)
-            labs = labs[valid]
-            vals = vals[valid]
-            hrs  = hrs[valid]
-
-            if labs.size == 0:
-                reg_list.append(np.zeros((n_bins, self.n_features * 2), dtype=np.float32))
+            if len(labels) == 0:
                 continue
 
-            # Unique sorted times (per sample) + inverse index for each original reading
-            sorted_t, inv = np.unique(hrs, return_inverse=True)
-            T = sorted_t.size
+            labels = np.asarray(labels, dtype=object)
+            vals   = np.asarray(vals,   dtype=np.float32)
+            hours  = np.asarray(hours,  dtype=np.float32)
 
-            # Wide per-sample table at unique times
-            sample_vals  = np.zeros((T, self.n_features), dtype=np.float32)
-            sample_masks = np.zeros((T, self.n_features), dtype=np.float32)
+            # normalize values (scalar mean/std as in your current tokenizer)
+            vals = (vals - self._val_mean) / (self._val_std + 1e-8)
 
-            # Fill table; iterate in original order so "last write wins" at same timestamp
-            for j in range(labs.size):
-                r = inv[j]
-                c = self.label2idx[labs[j]]
-                sample_vals[r, c]  = vals[j]
-                sample_masks[r, c] = 1.0
-
-            # Hourly bins + forward-fill imputation
-            reg_ts_sample = F_impute(
-                X=sample_vals,
-                tt=sorted_t,
-                mask=sample_masks,
-                duration=self.duration,
-                tt_max=self.tt_max
+            # Map to columns; drop unknown labels
+            cols = np.array(
+                [self.label2col[l] for l in labels if l in self.label2col],
+                dtype=np.int64
             )
-            reg_list.append(reg_ts_sample)
+            keep_mask = np.array([l in self.label2col for l in labels], dtype=bool)
+            if not keep_mask.any():
+                continue
 
-        reg_ts = np.stack(reg_list, axis=0)  # (B, n_bins, F*2)
+            vals  = vals[keep_mask]
+            hours = hours[keep_mask]
+
+            # Bin rows; clamp tt == tt_max into the last bin
+            rows = np.floor(hours / duration).astype(np.int64)
+            rows = np.clip(rows, 0, n_bins - 1)
+
+            # last-observation-wins per (row, col)
+            temp_values = np.full((n_bins, F), np.nan, dtype=np.float32)
+            temp_masks  = np.zeros((n_bins, F), dtype=np.float32)
+
+            # If multiple events hit same (row,col), the later in the list wins.
+            # To make "last wins" deterministic by time, sort by (row) and stable index.
+            order = np.argsort(rows, kind='mergesort')
+            rows_sorted = rows[order]
+            cols_sorted = cols[order]
+            vals_sorted = vals[order]
+
+            for r, c, v in zip(rows_sorted, cols_sorted, vals_sorted):
+                temp_values[r, c] = v
+                temp_masks[r, c]  = 1.0
+
+            # Forward-fill across time; leading bins get start_fill=0.0
+            values_ffill = _forward_fill(temp_values, start_fill=0.0)
+
+            # Pack [values | masks]
+            out = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            out[:, :F] = values_ffill
+            out[:, F:] = temp_masks
+
+            batch_out[i] = out
+
         return {
-            'reg_ts': torch.from_numpy(reg_ts),
-            'columns': self.columns,
+            'values': torch.from_numpy(batch_out)  # (B, n_bins, 2*F)
         }
