@@ -1,5 +1,6 @@
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
+import pandas as pd
 import json 
 from pathlib import Path
 
@@ -30,8 +31,8 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_vital = '', lmdb_path_lab = '',
                  lmdb_path_text = '', lmdb_path_medicine = '',
                  lmdb_path_procedure = '', lmdb_path_output = '',
-                 text_model_name = 'nlpie/tiny-clinicalbert', text_max_len = 512,
-                 batch_size=64, num_workers=4):
+                 csv_path_demographic = '', text_model_name = 'nlpie/tiny-clinicalbert', 
+                 text_max_len = 512, batch_size=64, num_workers=4):
         
         super().__init__()
         self.listfile = listfile
@@ -104,6 +105,14 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.output_tokenizer = OutputTokenizer(label_vocab=self.output_label_vocab,
                                                 outnorm=self.output_norm)
 
+        #demographics
+        demographic = pd.read_csv(csv_path_demographic)
+        train_set = self.listfile[self.listfile['original_split'] == 'train']
+        train_set = train_set['stay_id'].values
+        demo_train = demographic[demographic['stay_id'].isin(train_set)]
+        age_mean = demo_train['anchor_age'].mean()
+        age_std  = demo_train['anchor_age'].std()
+        self.demographic = demographic['anchor_age'] = (demographic['anchor_age'] - age_mean) / age_std
 
     def prepare_data(self):
         pass
@@ -112,17 +121,20 @@ class MultimodalDataModule(pl.LightningDataModule):
         # Called on every GPU separately; stage can be 'fit' or 'test'
         if stage in (None, 'fit'):
             self.train_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='train',
+                                           demographic_file = self.demographic,
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                            lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                            lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
            
             self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
+                                         demographic_file = self.demographic,
                                          lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                          lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                          lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
         if stage in (None, 'test'):
             self.test_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='test',
+                                          demographic_file = self.demographic,
                                           lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                           lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)

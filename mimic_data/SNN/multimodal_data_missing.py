@@ -11,6 +11,7 @@ class MultimodalData(Dataset):
         modalities,               # e.g. ['physio','ecg','text'] or ['physio','medicine','text']
         task_type='phenotype',
         split='train',
+        demographic_file = None,
         split_col_name = 'original_split',
         lmdb_path_vital='none',
         lmdb_path_lab='none',
@@ -41,6 +42,9 @@ class MultimodalData(Dataset):
             self.sample_labels = torch.tensor(self.data_split.drop(extra,axis=1).values).float()
         else:
             self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
+
+        self.demographic_file = demographic_file.set_index("stay_id")
+        self.demographic_file = self.demographic_file.drop('subject_id', axis=1)
 
         # keys for LMDB
         self.vital_keys = [s.encode('utf-8') for s in self.data_split['vital'].astype(str)]
@@ -82,6 +86,10 @@ class MultimodalData(Dataset):
         if self.envs[mod] is None:
             self.envs[mod] = lmdb.open(self.lmdb_paths[mod], readonly=True, lock=False)
             self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
+
+    def _load_demographic(self, idx):
+        raw = self.demographic_file.loc[idx]
+        return raw.values, False
 
     def _load_vital(self, idx):
         self._open_env('vital')

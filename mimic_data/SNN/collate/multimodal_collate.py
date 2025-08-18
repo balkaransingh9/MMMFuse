@@ -57,6 +57,11 @@ class MultimodalCollate:
         #Sequence modalities
         seq_data = {}
         
+        # Demographics
+        if 'demographic' in self.modalities:
+            demo = [o['demographic'] for o in outs_list]
+            seq_data['demographic'] = torch.stack(demo, dim=0)
+
         # 1) Vitals modality
         if 'vital' in self.modalities:
             vital = [o['vital'] for o in outs_list]
