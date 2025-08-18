@@ -86,10 +86,16 @@ class MultimodalData(Dataset):
         if self.envs[mod] is None:
             self.envs[mod] = lmdb.open(self.lmdb_paths[mod], readonly=True, lock=False)
             self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
-
+    
     def _load_demographic(self, idx):
-        raw = self.demographic_file.loc[idx]
-        return raw.values, False
+        stay_id = self.data_split.iloc[idx]['stay_id']
+        if stay_id not in self.demographic_file.index:
+            return None, True
+        raw = self.demographic_file.loc[stay_id]
+        if raw.isna().all():
+            return None, True
+
+        return torch.tensor(raw.values), False
 
     def _load_vital(self, idx):
         self._open_env('vital')
