@@ -94,8 +94,7 @@ class MultimodalData(Dataset):
         raw = self.demographic_file.loc[stay_id]
         if raw.isna().all():
             return None, True
-
-        return torch.tensor(raw.values), False
+        return torch.tensor(raw.values, dtype=torch.float32), False
 
     def _load_vital(self, idx):
         self._open_env('vital')
