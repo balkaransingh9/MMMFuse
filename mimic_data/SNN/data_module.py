@@ -112,7 +112,8 @@ class MultimodalDataModule(pl.LightningDataModule):
         demo_train = demographic[demographic['stay_id'].isin(train_set)]
         age_mean = demo_train['anchor_age'].mean()
         age_std  = demo_train['anchor_age'].std()
-        self.demographic = demographic['anchor_age'] = (demographic['anchor_age'] - age_mean) / age_std
+        demographic['anchor_age'] = (demographic['anchor_age'] - age_mean) / age_std
+        self.demographic = demographic
 
     def prepare_data(self):
         pass
