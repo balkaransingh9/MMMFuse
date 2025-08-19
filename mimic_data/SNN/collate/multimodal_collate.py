@@ -67,6 +67,21 @@ class MultimodalCollate:
             icd = [o['icd_code'] for o in outs_list]
             seq_data['icd_code'] = torch.stack(icd, dim=0)
 
+        #ecg
+        if 'ecg' in self.modalities:
+            ecg_list = [o['ecg'] for o in outs_list]
+            first_non_none = next((e for e in ecg_list if e is not None), None)
+            if first_non_none is None:
+                #if all None in a batch
+                dummy_shape = (1, 5000)
+                ecg_list = [torch.zeros(dummy_shape, dtype=torch.float32) for _ in ecg_list]
+            else:
+                dummy_shape = first_non_none.shape
+                ecg_list = [e if e is not None else torch.zeros(dummy_shape, dtype=first_non_none.dtype) for e in ecg_list]
+
+            seq_data['ecg'] = torch.stack(ecg_list, dim=0)
+
+
         # 1) Vitals modality
         if 'vital' in self.modalities:
             vital = [o['vital'] for o in outs_list]
