@@ -125,7 +125,7 @@ class MultimodalDataModule(pl.LightningDataModule):
         #ecg
         self.ecg_norm = None
         if self.lmdb_path_ecg != '':
-           self.ecg_norm = normaliser(self.listfile, lmdb_env=self.lmdb_path_ecg)
+           self.ecg_norm = normaliser(self.listfile, lmdb_path=self.lmdb_path_ecg)
         
 
 
