@@ -21,6 +21,7 @@ class MultimodalData(Dataset):
         lmdb_path_procedure='none',
         lmdb_path_output='none',
         lmdb_path_ecg='none',
+        ecg_normaliser=None,
     ):
         self.list_file      = list_file
         self.modalities     = modalities
@@ -61,6 +62,9 @@ class MultimodalData(Dataset):
         self.text_keys = [s.encode('utf-8') for s in self.data_split['text'].astype(str)]
         self.ecg_keys = [s.encode('utf-8') for s in self.data_split['ecg'].astype(str)]
 
+        if 'ecg' in modalities and ecg_normaliser is not None:
+            self.m_ecg, self.s_ecg = ecg_normaliser['mean'], ecg_normaliser['std']
+
         # LMDB paths + env stubs
         self.lmdb_paths = {
             'vital':   lmdb_path_vital,
@@ -100,7 +104,9 @@ class MultimodalData(Dataset):
         raw = self.envs['ecg_txn'].get(self.ecg_keys[idx])
         if raw is None:
             return None, True
-        return pickle.loads(raw), False
+        buffer = BytesIO(raw)
+        loaded_data = torch.load(buffer)
+        return (loaded_data - self.m_ecg) / self.s_ecg, False
     
     def _load_demographic(self, idx):
         stay_id = self.data_split.iloc[idx]['stay_id']

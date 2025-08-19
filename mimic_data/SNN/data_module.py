@@ -13,6 +13,7 @@ from .utils.normaliser import med_normaliser
 from .utils.normaliser import vital_normaliser
 from .utils.normaliser import value_hour_normaliser
 from .utils.normaliser import procedure_normaliser
+from .utils.normaliser import normaliser
 
 from .utils.build_vocab import build_vocab
 
@@ -31,6 +32,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_vital = '', lmdb_path_lab = '',
                  lmdb_path_text = '', lmdb_path_medicine = '',
                  lmdb_path_procedure = '', lmdb_path_output = '',
+                 lmdb_path_ecg = '',
                  csv_path_demographic = '', csv_path_icd_code = '',
                  text_model_name = 'nlpie/tiny-clinicalbert', 
                  text_max_len = 512, batch_size=64, num_workers=4):
@@ -45,6 +47,7 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.lmdb_path_medicine = lmdb_path_medicine
         self.lmdb_path_procedure = lmdb_path_procedure
         self.lmdb_path_output = lmdb_path_output
+        self.lmdb_path_ecg = lmdb_path_ecg
 
         if task_type == 'phenotype':
             self.task_type = task_type
@@ -116,7 +119,15 @@ class MultimodalDataModule(pl.LightningDataModule):
         demographic['anchor_age'] = (demographic['anchor_age'] - age_mean) / age_std
         self.demographic = demographic
 
+        #icd codes
         self.icd_code = pd.read_csv(csv_path_icd_code)
+
+        #ecg
+        self.ecg_norm = None
+        if self.lmdb_path_ecg != '':
+           self.ecg_norm = normaliser(self.listfile, lmdb_env=self.lmdb_path_ecg)
+        
+
 
     def prepare_data(self):
         pass
@@ -128,12 +139,14 @@ class MultimodalDataModule(pl.LightningDataModule):
                                            demographic_file = self.demographic, icd_code_file=self.icd_code,
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                            lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
+                                           lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
                                            lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
            
             self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
                                          demographic_file = self.demographic, icd_code_file=self.icd_code,
                                          lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                          lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
+                                         lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
                                          lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
         if stage in (None, 'test'):
@@ -141,6 +154,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                           demographic_file = self.demographic, icd_code_file=self.icd_code,
                                           lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
+                                          lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
                                           lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
     def train_dataloader(self):
