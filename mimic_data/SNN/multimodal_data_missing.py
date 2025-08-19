@@ -12,6 +12,7 @@ class MultimodalData(Dataset):
         task_type='phenotype',
         split='train',
         demographic_file = None,
+        icd_code_file = None,
         split_col_name = 'original_split',
         lmdb_path_vital='none',
         lmdb_path_lab='none',
@@ -19,6 +20,7 @@ class MultimodalData(Dataset):
         lmdb_path_medicine='none',
         lmdb_path_procedure='none',
         lmdb_path_output='none',
+        lmdb_path_ecg='none',
     ):
         self.list_file      = list_file
         self.modalities     = modalities
@@ -46,6 +48,10 @@ class MultimodalData(Dataset):
         self.demographic_file = demographic_file.set_index("stay_id")
         self.demographic_file = self.demographic_file.drop('subject_id', axis=1)
 
+        if icd_code_file is not None:
+            self.icd_code_file = icd_code_file
+            self.icd_code_file = self.icd_code_file.set_index("stay_id")
+
         # keys for LMDB
         self.vital_keys = [s.encode('utf-8') for s in self.data_split['vital'].astype(str)]
         self.lab_keys = [s.encode('utf-8') for s in self.data_split['lab'].astype(str)]
@@ -53,6 +59,7 @@ class MultimodalData(Dataset):
         self.output_keys = [s.encode('utf-8') for s in self.data_split['output'].astype(str)]
         self.med_keys = [s.encode('utf-8') for s in self.data_split['med'].astype(str)]
         self.text_keys = [s.encode('utf-8') for s in self.data_split['text'].astype(str)]
+        self.ecg_keys = [s.encode('utf-8') for s in self.data_split['ecg'].astype(str)]
 
         # LMDB paths + env stubs
         self.lmdb_paths = {
@@ -62,6 +69,7 @@ class MultimodalData(Dataset):
             'output':    lmdb_path_output,
             'text':     lmdb_path_text,
             'medicine': lmdb_path_medicine,
+            'ecg':      lmdb_path_ecg
         }
         self.envs = {mod: None for mod in modalities}
 
@@ -86,6 +94,13 @@ class MultimodalData(Dataset):
         if self.envs[mod] is None:
             self.envs[mod] = lmdb.open(self.lmdb_paths[mod], readonly=True, lock=False)
             self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
+
+    def _load_ecg(self, idx):
+        self._open_env('ecg')
+        raw = self.envs['ecg_txn'].get(self.ecg_keys[idx])
+        if raw is None:
+            return None, True
+        return pickle.loads(raw), False
     
     def _load_demographic(self, idx):
         stay_id = self.data_split.iloc[idx]['stay_id']
@@ -95,6 +110,15 @@ class MultimodalData(Dataset):
         if raw.isna().all():
             return None, True
         return torch.tensor(raw.values, dtype=torch.float32), False
+
+    def _load_icd_code(self, idx):
+        stay_id = self.data_split.iloc[idx]['stay_id']
+        if stay_id not in self.icd_code_file.index:
+            return None, True
+        raw = self.icd_code_file.loc[stay_id]
+        if raw.isna().all():
+            return None, True
+        return torch.tensor(raw.values, dtype=int), False
 
     def _load_vital(self, idx):
         self._open_env('vital')
