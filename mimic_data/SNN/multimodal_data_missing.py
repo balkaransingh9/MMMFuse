@@ -106,7 +106,7 @@ class MultimodalData(Dataset):
             return None, True
         buffer = BytesIO(raw)
         loaded_data = torch.load(buffer)
-        return (loaded_data - self.m_ecg) / self.s_ecg, False
+        return (loaded_data['sample'] - self.m_ecg) / self.s_ecg, False
     
     def _load_demographic(self, idx):
         stay_id = self.data_split.iloc[idx]['stay_id']
