@@ -114,10 +114,10 @@ class MultimodalData(Dataset):
     def _load_icd_code(self, idx):
         stay_id = self.data_split.iloc[idx]['stay_id']
         if stay_id not in self.icd_code_file.index:
-            return None, True
+            return torch.zeros(self.icd_code_file.shape[1]), True
         raw = self.icd_code_file.loc[stay_id]
         if raw.isna().all():
-            return None, True
+            return torch.zeros(self.icd_code_file.shape[1]), True
         return torch.tensor(raw.values, dtype=int), False
 
     def _load_vital(self, idx):
