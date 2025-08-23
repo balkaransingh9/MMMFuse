@@ -119,7 +119,7 @@ class MultimodalData(Dataset):
         Each LMDB value is expected to be a pickled list of dicts with keys.
         """
         self._open_env('cxr')
-        raw = self.envs['cxr_txn'].get(self.img_keys[idx])
+        raw = self.envs['cxr_txn'].get(self.cxr_keys[idx])
         if raw is None:
             return None, True
 
