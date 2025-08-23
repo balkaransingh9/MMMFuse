@@ -138,7 +138,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                            lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                            lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
-                                           lmdb_path_ecg=self.lmdb_path_cxr,
+                                           lmdb_path_cxr=self.lmdb_path_cxr,
                                            lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
            
             self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
@@ -146,7 +146,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                          lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                          lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                          lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
-                                         lmdb_path_ecg=self.lmdb_path_cxr,
+                                         lmdb_path_cxr=self.lmdb_path_cxr,
                                          lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
         if stage in (None, 'test'):
@@ -155,7 +155,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                           lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                           lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
-                                          lmdb_path_ecg=self.lmdb_path_cxr,
+                                          lmdb_path_cxr=self.lmdb_path_cxr,
                                           lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
     def train_dataloader(self):
