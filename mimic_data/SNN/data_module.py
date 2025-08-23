@@ -5,9 +5,8 @@ import json
 from pathlib import Path
 
 #from .multimodal_data import MultimodalData
-from .multimodal_data_missing import MultimodalData
-
-from .collate.multimodal_collate import MultimodalCollate
+from .multimodal_data_missing_img import MultimodalData
+from .collate.multimodal_collate_img import MultimodalCollate
 
 from .utils.normaliser import med_normaliser
 from .utils.normaliser import vital_normaliser
@@ -32,7 +31,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_vital = '', lmdb_path_lab = '',
                  lmdb_path_text = '', lmdb_path_medicine = '',
                  lmdb_path_procedure = '', lmdb_path_output = '',
-                 lmdb_path_ecg = '',
+                 lmdb_path_ecg = '', lmdb_path_cxr = '',
                  csv_path_demographic = '', csv_path_icd_code = '',
                  text_model_name = 'nlpie/tiny-clinicalbert', 
                  text_max_len = 512, batch_size=64, num_workers=4):
@@ -48,6 +47,7 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.lmdb_path_procedure = lmdb_path_procedure
         self.lmdb_path_output = lmdb_path_output
         self.lmdb_path_ecg = lmdb_path_ecg
+        self.lmdb_path_cxr = lmdb_path_cxr
 
         if task_type == 'phenotype':
             self.task_type = task_type
@@ -127,8 +127,6 @@ class MultimodalDataModule(pl.LightningDataModule):
         if self.lmdb_path_ecg != '':
            self.ecg_norm = normaliser(self.listfile, lmdb_path=self.lmdb_path_ecg)
         
-
-
     def prepare_data(self):
         pass
 
@@ -140,6 +138,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                            lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                            lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
+                                           lmdb_path_ecg=self.lmdb_path_cxr,
                                            lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
            
             self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
@@ -147,6 +146,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                          lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                          lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                          lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
+                                         lmdb_path_ecg=self.lmdb_path_cxr,
                                          lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
         if stage in (None, 'test'):
@@ -155,6 +155,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                                           lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab,
                                           lmdb_path_text=self.lmdb_path_text, lmdb_path_medicine=self.lmdb_path_medicine,
                                           lmdb_path_ecg=self.lmdb_path_ecg, ecg_normaliser = self.ecg_norm,
+                                          lmdb_path_ecg=self.lmdb_path_cxr,
                                           lmdb_path_procedure=self.lmdb_path_procedure, lmdb_path_output=self.lmdb_path_output)
 
     def train_dataloader(self):
