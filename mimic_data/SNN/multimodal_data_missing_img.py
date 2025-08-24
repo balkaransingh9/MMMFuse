@@ -114,10 +114,6 @@ class MultimodalData(Dataset):
             self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
 
     def _load_cxr(self, idx):
-        """
-        Loads CXR images + hours from LMDB.
-        Each LMDB value is expected to be a pickled list of dicts with keys.
-        """
         self._open_env('cxr')
         raw = self.envs['cxr_txn'].get(self.cxr_keys[idx])
         if raw is None:
@@ -128,10 +124,10 @@ class MultimodalData(Dataset):
         for item in obj:
             img_bytes = item['img']
             hr_val    = item['hours']
-            img_u8 = tvio.decode_jpeg(
-                torch.frombuffer(img_bytes, dtype=torch.uint8),
-                mode=tvio.ImageReadMode.GRAY
-            )
+
+            buf = torch.tensor(bytearray(img_bytes), dtype=torch.uint8)
+
+            img_u8 = tvio.decode_jpeg(buf, mode=tvio.ImageReadMode.GRAY)
             img = self._cxr_tf(img_u8)  # [1,224,224]
             images.append(img)
             if hr_val is not None:
@@ -140,16 +136,16 @@ class MultimodalData(Dataset):
         if len(images) == 0:
             return None, True
 
-        #sort if we have both imgs and hrs
         if len(images) > 1 and len(hours) == len(images):
             hrs_tensor = torch.tensor(hours, dtype=torch.float32)
-            order = torch.argsort(hrs_tensor)  # ascending; use descending for latest-first
+            order = torch.argsort(hrs_tensor)  # ascending
             images = [images[i] for i in order]
             hours  = hrs_tensor[order].tolist()
 
         images = torch.stack(images, dim=0)              # [N,1,224,224]
         hrs    = torch.tensor(hours, dtype=torch.float32) if hours else torch.empty(0)
         return {"img": images, "hrs": hrs}, False
+
 
     def _load_ecg(self, idx):
         self._open_env('ecg')
