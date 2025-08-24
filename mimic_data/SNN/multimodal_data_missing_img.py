@@ -3,8 +3,9 @@ from torch.utils.data import Dataset
 import lmdb
 from io import BytesIO
 import pickle
+import numpy as np
 
-# Added imports for fast JPEG decode + simple tensor transforms
+# fast JPEG decode + simple tensor transforms
 import torchvision.io as tvio
 import torchvision.transforms.v2 as T
 
@@ -47,17 +48,20 @@ class MultimodalData(Dataset):
         if task_type == 'phenotype':
             extra = ['subject_id','stay','period_length','stay_id','original_split','ecg_path', 
                      'ecg', 'text', 'med', 'output', 'procedure', 'lab', 'vital', 'cxr']
-            
             self.sample_labels = torch.tensor(self.data_split.drop(extra,axis=1).values).float()
         else:
             self.sample_labels = torch.tensor(self.data_split['y_true'].values).float()
 
-        self.demographic_file = demographic_file.set_index("stay_id")
-        self.demographic_file = self.demographic_file.drop('subject_id', axis=1)
+        # demographics/icd (optional)
+        self.demographic_file = None
+        if demographic_file is not None:
+            self.demographic_file = demographic_file.set_index("stay_id")
+            if 'subject_id' in self.demographic_file.columns:
+                self.demographic_file = self.demographic_file.drop('subject_id', axis=1)
 
+        self.icd_code_file = None
         if icd_code_file is not None:
-            self.icd_code_file = icd_code_file
-            self.icd_code_file = self.icd_code_file.set_index("stay_id")
+            self.icd_code_file = icd_code_file.set_index("stay_id")
 
         # keys for LMDB
         self.vital_keys = [s.encode('utf-8') for s in self.data_split['vital'].astype(str)]
@@ -74,17 +78,19 @@ class MultimodalData(Dataset):
 
         # LMDB paths + env stubs
         self.lmdb_paths = {
-            'vital':   lmdb_path_vital,
-            'lab':      lmdb_path_lab,
+            'vital':     lmdb_path_vital,
+            'lab':       lmdb_path_lab,
             'procedure': lmdb_path_procedure,
             'output':    lmdb_path_output,
-            'text':     lmdb_path_text,
-            'medicine': lmdb_path_medicine,
-            'ecg':      lmdb_path_ecg,
-            'cxr':      lmdb_path_cxr
+            'text':      lmdb_path_text,
+            'medicine':  lmdb_path_medicine,
+            'ecg':       lmdb_path_ecg,
+            'cxr':       lmdb_path_cxr
         }
-        self.envs = {mod: None for mod in modalities}
+        self.envs = {mod: None for mod in self.lmdb_paths.keys()}
+        self.txns = {}
 
+        # transforms
         self._cxr_tf = T.Compose([
             T.Resize((224, 224), antialias=True),
             T.ToDtype(torch.float32, scale=True),
@@ -107,111 +113,144 @@ class MultimodalData(Dataset):
         label = self.sample_labels[idx]
         return out, flags, label
 
+    # ---------- LMDB helpers ----------
+
     def _open_env(self, mod):
-        # helper to lazily open each env
-        if self.envs[mod] is None:
-            self.envs[mod] = lmdb.open(self.lmdb_paths[mod], readonly=True, lock=False)
-            self.envs[mod + "_txn"] = self.envs[mod].begin(write=False)
+        # Lazily open each env with perf-friendly flags
+        if self.envs.get(mod) is None:
+            self.envs[mod] = lmdb.open(
+                self.lmdb_paths[mod],
+                readonly=True,
+                lock=False,
+                readahead=False,     # good for random reads
+                max_readers=2048,
+                map_async=True,
+            )
+            # one long-lived read txn per env (fast & safe for read-only)
+            self.txns[mod] = self.envs[mod].begin(write=False, buffers=True)
+
+    def _get(self, mod, key):
+        self._open_env(mod)
+        return self.txns[mod].get(key)
+
+    # ---------- CXR: only decode the latest image ----------
+
+    def _decode_jpeg_gray_fast(self, img_bytes: memoryview) -> torch.Tensor:
+        """
+        Zero-copy-ish JPEG decode path:
+          memoryview(bytes) -> np.frombuffer(view) -> torch.from_numpy(view) -> tvio.decode_jpeg
+        Returns float32 normalized tensor AFTER transform: [1, 224, 224]
+        """
+        # Create a uint8 view without copying
+        arr = np.frombuffer(img_bytes, dtype=np.uint8)
+        buf = torch.from_numpy(arr)  # shares memory with the buffer
+        img_u8 = tvio.decode_jpeg(buf, mode=tvio.ImageReadMode.GRAY)  # [1,H,W] uint8
+        img = self._cxr_tf(img_u8)  # [1,224,224] float32 normalized
+        return img
 
     def _load_cxr(self, idx):
-        self._open_env('cxr')
-        raw = self.envs['cxr_txn'].get(self.cxr_keys[idx])
+        raw = self._get('cxr', self.cxr_keys[idx])
         if raw is None:
             return None, True
 
+        # obj is expected to be a list of dicts: {'img': bytes, 'hours': float or None}
         obj = pickle.loads(raw)
-        images, hours = [], []
-        for item in obj:
-            img_bytes = item['img']
-            hr_val    = item['hours']
-
-            buf = torch.tensor(bytearray(img_bytes), dtype=torch.uint8)
-
-            img_u8 = tvio.decode_jpeg(buf, mode=tvio.ImageReadMode.GRAY)
-            img = self._cxr_tf(img_u8)  # [1,224,224]
-            images.append(img)
-            if hr_val is not None:
-                hours.append(float(hr_val))
-
-        if len(images) == 0:
+        if not obj:
             return None, True
 
-        if len(images) > 1 and len(hours) == len(images):
-            hrs_tensor = torch.tensor(hours, dtype=torch.float32)
-            order = torch.argsort(hrs_tensor)  # ascending
-            images = [images[i] for i in order]
-            hours  = hrs_tensor[order].tolist()
+        # Prefer entry with max hours; if hours are missing, fallback to last element
+        best_item = None
+        max_hr = None
+        any_hr_present = False
+        for item in obj:
+            hr = item.get('hours', None)
+            if hr is not None:
+                any_hr_present = True
+                if (max_hr is None) or (hr > max_hr):
+                    max_hr = hr
+                    best_item = item
 
-        images = torch.stack(images, dim=0)              # [N,1,224,224]
-        hrs    = torch.tensor(hours, dtype=torch.float32) if hours else torch.empty(0)
-        return {"img": images, "hrs": hrs}, False
+        if best_item is None:
+            # No hours present; take last item
+            best_item = obj[-1]
+            hr_val = best_item.get('hours', None)
+        else:
+            hr_val = max_hr
 
+        img_bytes = best_item['img']
+        # Use memoryview to avoid copying
+        img = self._decode_jpeg_gray_fast(memoryview(img_bytes))  # [1,224,224]
+        hr_tensor = torch.tensor(0.0 if hr_val is None else float(hr_val), dtype=torch.float32)
+
+        # Return a single image (+ hour), not a sequence
+        return {"img": img, "hr": hr_tensor}, False
+
+    # ---------- Other modalities (unchanged logic) ----------
 
     def _load_ecg(self, idx):
-        self._open_env('ecg')
-        raw = self.envs['ecg_txn'].get(self.ecg_keys[idx])
+        raw = self._get('ecg', self.ecg_keys[idx])
         if raw is None:
             return None, True
         buffer = BytesIO(raw)
         loaded_data = torch.load(buffer)
-        return (loaded_data['sample'] - self.m_ecg) / self.s_ecg, False
+        if hasattr(self, 'm_ecg') and hasattr(self, 's_ecg'):
+            return (loaded_data['sample'] - self.m_ecg) / self.s_ecg, False
+        return loaded_data['sample'], False
     
     def _load_demographic(self, idx):
+        if self.demographic_file is None:
+            return None, True
         stay_id = self.data_split.iloc[idx]['stay_id']
         if stay_id not in self.demographic_file.index:
             return None, True
         raw = self.demographic_file.loc[stay_id]
-        if raw.isna().all():
+        if hasattr(raw, "isna") and raw.isna().all():
             return None, True
         return torch.tensor(raw.values, dtype=torch.float32), False
 
     def _load_icd_code(self, idx):
+        if self.icd_code_file is None:
+            return None, True
         stay_id = self.data_split.iloc[idx]['stay_id']
         if stay_id not in self.icd_code_file.index:
             return torch.zeros(self.icd_code_file.shape[1]), True
         raw = self.icd_code_file.loc[stay_id]
-        if raw.isna().all():
+        if hasattr(raw, "isna") and raw.isna().all():
             return torch.zeros(self.icd_code_file.shape[1]), True
         return torch.tensor(raw.values, dtype=int), False
 
     def _load_vital(self, idx):
-        self._open_env('vital')
-        raw = self.envs['vital_txn'].get(self.vital_keys[idx])
+        raw = self._get('vital', self.vital_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
 
     def _load_lab(self, idx):
-        self._open_env('lab')
-        raw = self.envs['lab_txn'].get(self.lab_keys[idx])
+        raw = self._get('lab', self.lab_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
 
     def _load_procedure(self, idx):
-        self._open_env('procedure')
-        raw = self.envs['procedure_txn'].get(self.procedure_keys[idx])
+        raw = self._get('procedure', self.procedure_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
 
     def _load_output(self, idx):
-        self._open_env('output')
-        raw = self.envs['output_txn'].get(self.output_keys[idx])
+        raw = self._get('output', self.output_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
 
     def _load_medicine(self, idx):
-        self._open_env('medicine')
-        raw = self.envs['medicine_txn'].get(self.med_keys[idx])
+        raw = self._get('medicine', self.med_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
 
     def _load_text(self, idx):
-        self._open_env('text')
-        raw = self.envs['text_txn'].get(self.text_keys[idx])
+        raw = self._get('text', self.text_keys[idx])
         if raw is None:
             return "", True
         return pickle.loads(raw), False
