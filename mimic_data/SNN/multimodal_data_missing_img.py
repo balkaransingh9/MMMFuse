@@ -134,18 +134,18 @@ class MultimodalData(Dataset):
         return self.txns[mod].get(key)
 
     # ---------- CXR: only decode the latest image ----------
-
+    
     def _decode_jpeg_gray_fast(self, img_bytes: memoryview) -> torch.Tensor:
         """
-        Zero-copy-ish JPEG decode path:
-          memoryview(bytes) -> np.frombuffer(view) -> torch.from_numpy(view) -> tvio.decode_jpeg
+        JPEG decode path:
+        memoryview(bytes) -> np.frombuffer(...).copy() [writable] -> torch.from_numpy -> tvio.decode_jpeg
         Returns float32 normalized tensor AFTER transform: [1, 224, 224]
         """
-        # Create a uint8 view without copying
-        arr = np.frombuffer(img_bytes, dtype=np.uint8)
-        buf = torch.from_numpy(arr)  # shares memory with the buffer
+        # Make a writable view (small copy of the *compressed* bytes, not the decoded image)
+        arr = np.frombuffer(img_bytes, dtype=np.uint8).copy()   # <-- key change: .copy()
+        buf = torch.from_numpy(arr)                             # uint8, CPU
         img_u8 = tvio.decode_jpeg(buf, mode=tvio.ImageReadMode.GRAY)  # [1,H,W] uint8
-        img = self._cxr_tf(img_u8)  # [1,224,224] float32 normalized
+        img = self._cxr_tf(img_u8)                              # [1,224,224] float32 normalized
         return img
 
     def _load_cxr(self, idx):
