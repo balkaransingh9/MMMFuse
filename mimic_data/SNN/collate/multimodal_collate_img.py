@@ -85,7 +85,7 @@ class MultimodalCollate:
             else:
                 dummy_shape = first_non_none.shape
                 ecg_list = [e if e is not None else torch.zeros(dummy_shape, dtype=first_non_none.dtype) for e in ecg_list]
-            seq_data['ecg'] = torch.stack(ecg_list, dim=0)  # [B, ?, ?]
+            seq_data['ecg'] = torch.stack(ecg_list, dim=0)
 
         # Vitals
         if 'vital' in self.modalities:
