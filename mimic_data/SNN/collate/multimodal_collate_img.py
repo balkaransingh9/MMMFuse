@@ -26,33 +26,45 @@ class MultimodalCollate:
         Args:
             text_tokenizer: HF-style tokenizer for text modality
             med_tokenizer: custom tokenizer for med modality
-            modalities: list of modality names, e.g. ['text','medicine','lab','ecg',…]
+            modalities: list of modality names, e.g. ['text','medicine','lab','ecg', …]
             task_type: one of ['phenotype', 'in_hospital_mortality', 'length_of_stay']
         """
         if task_type not in ['phenotype', 'in_hospital_mortality', 'length_of_stay']:
             raise ValueError(f"Unsupported task type: {task_type}")
 
-        self.modalities   = modalities
-        self.vitals_tok   = vitals_tokenizer
-        self.labs_tok     = labs_tokenizer
-        self.med_tok      = med_tokenizer
-        self.text_tok     = text_tokenizer
-        self.output_tok   = output_tokenizer
-        self.procedure_tok = procedure_tokenizer
-        self.task_type    = task_type
-        self.text_max_len = text_max_len
-        self.vitals_kwargs = vitals_kwargs or {}
-        self.labs_kwargs   = labs_kwargs  or {}
-        self.text_kwargs  = text_kwargs or {}
-        self.med_kwargs   = med_kwargs  or {}
-        self.output_kwargs = output_kwargs or {}
+        self.modalities     = modalities
+        self.vitals_tok     = vitals_tokenizer
+        self.labs_tok       = labs_tokenizer
+        self.med_tok        = med_tokenizer
+        self.text_tok       = text_tokenizer
+        self.output_tok     = output_tokenizer
+        self.procedure_tok  = procedure_tokenizer
+        self.task_type      = task_type
+        self.text_max_len   = text_max_len
+        self.vitals_kwargs  = vitals_kwargs  or {}
+        self.labs_kwargs    = labs_kwargs   or {}
+        self.text_kwargs    = text_kwargs   or {}
+        self.med_kwargs     = med_kwargs    or {}
+        self.output_kwargs  = output_kwargs or {}
         self.procedure_kwargs = procedure_kwargs or {}
 
+    # --- helper: convert ONLY floating tensors (fp64/fp32/fp16/bf16) to float32 ---
+    def _to_f32(self, obj):
+        if torch.is_tensor(obj):
+            return obj.float() if obj.dtype.is_floating_point else obj
+        if isinstance(obj, dict):
+            return {k: self._to_f32(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            items = [self._to_f32(v) for v in obj]
+            return type(obj)(items) if isinstance(obj, tuple) else items
+        return obj
+
     def __call__(self, batch):
+        # batch: iterable of (outs, flags, label)
         outs_list, flags_list, labels_list = zip(*batch)
 
         seq_data = {}
-        
+
         # Demographics
         if 'demographic' in self.modalities:
             demo = [o['demographic'] for o in outs_list]
@@ -68,12 +80,12 @@ class MultimodalCollate:
             ecg_list = [o['ecg'] for o in outs_list]
             first_non_none = next((e for e in ecg_list if e is not None), None)
             if first_non_none is None:
-                dummy_shape = (1, 5000)
+                dummy_shape = (5000, 12)
                 ecg_list = [torch.zeros(dummy_shape, dtype=torch.float32) for _ in ecg_list]
             else:
                 dummy_shape = first_non_none.shape
                 ecg_list = [e if e is not None else torch.zeros(dummy_shape, dtype=first_non_none.dtype) for e in ecg_list]
-            seq_data['ecg'] = torch.stack(ecg_list, dim=0)
+            seq_data['ecg'] = torch.stack(ecg_list, dim=0)  # [B, ?, ?]
 
         # Vitals
         if 'vital' in self.modalities:
@@ -89,7 +101,7 @@ class MultimodalCollate:
         if 'medicine' in self.modalities:
             meds = [o['medicine'] for o in outs_list]
             seq_data['medicine'] = self.med_tok.tokenize(meds, **self.med_kwargs)
-        
+
         # Output
         if 'output' in self.modalities:
             output = [o['output'] for o in outs_list]
@@ -106,13 +118,11 @@ class MultimodalCollate:
             tokenized = prepare_embedding_batch(texts, num_notes=5)
             seq_data['text'] = tokenized
 
-        # CXR (now single image per sample)
         if 'cxr' in self.modalities:
             imgs_b, hrs_b, mask_b = [], [], []
-            # Determine dtype/shape lazily
             first_present = next((o['cxr'] for o in outs_list if (o.get('cxr') is not None)), None)
             if first_present is not None and isinstance(first_present, dict) and 'img' in first_present:
-                c, h, w = first_present['img'].shape  # [1,224,224]
+                c, h, w = first_present['img'].shape  # expected [1,224,224]
                 img_dtype = first_present['img'].dtype
             else:
                 c, h, w = 1, 224, 224
@@ -126,24 +136,23 @@ class MultimodalCollate:
                     mask_b.append(False)
                 else:
                     entry = o['cxr']
-                    imgs_b.append(entry['img'])  # [1,224,224]
-                    hrs_b.append(entry['hr'].to(torch.float32))
+                    imgs_b.append(entry['img'])                  # [1,224,224]
+                    hrs_b.append(entry['hr'].to(torch.float32))  # scalar
                     mask_b.append(True)
 
             seq_data['cxr'] = {
-                'img':  torch.stack(imgs_b, dim=0),    # [B,1,224,224]
-                'hr':   torch.stack(hrs_b, dim=0),     # [B]
-                'mask': torch.tensor(mask_b, dtype=torch.bool),  # [B]
+                'img':  torch.stack(imgs_b, dim=0),                 # [B,1,224,224]
+                'hr':   torch.stack(hrs_b, dim=0),                  # [B]
+                'mask': torch.tensor(mask_b, dtype=torch.bool),     # [B]
             }
 
-        # Missing‐modality mask
         present_mask = {}
         for mod in self.modalities:
             mask = torch.tensor(
-                [ not f.get(f"{mod}_missing", True) for f in flags_list ],
+                [not f.get(f"{mod}_missing", True) for f in flags_list],
                 dtype=torch.bool
             )
-            present_mask[mod] = mask.float()
+            present_mask[mod] = mask.float()  # keep as float for losses that expect float masks
 
         # Labels
         if self.task_type == 'phenotype':
@@ -152,6 +161,12 @@ class MultimodalCollate:
             labels = torch.tensor(labels_list, dtype=torch.float32).unsqueeze(1)
         else:  # length_of_stay
             labels = torch.tensor(labels_list).long()
+
+        seq_data = self._to_f32(seq_data)
+
+        if 'cxr' in seq_data and isinstance(seq_data['cxr'], dict) and 'img' in seq_data['cxr']:
+            if torch.is_tensor(seq_data['cxr']['img']) and seq_data['cxr']['img'].dtype.is_floating_point:
+                seq_data['cxr']['img'] = seq_data['cxr']['img'].float()
 
         return {
             "inputs": seq_data,
