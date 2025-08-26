@@ -7,6 +7,8 @@ from pathlib import Path
 from .dataset import MultimodalData
 from .eicu_collate import MultimodalCollate
 
+from .normaliser import normaliser
+
 """
 For eICU Data
 """
@@ -55,7 +57,8 @@ class MultimodalDataModule(pl.LightningDataModule):
             self.treatment = self.treatment.drop(columns=["patientunitstayid"]).astype("int32")
             self.treatment.insert(0, "patientunitstayid", pid_col)
 
-
+        self.vital_norm = normaliser(self.listfile, lmdb_path=self.lmdb_path_vital)
+        self.lab_norm = normaliser(self.listfile, lmdb_path=self.lmdb_path_lab)
 
     def prepare_data(self):
         pass
@@ -66,16 +69,19 @@ class MultimodalDataModule(pl.LightningDataModule):
         if stage in (None, 'fit'):
             self.train_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='train',
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab, lmdb_path_medicine=self.lmdb_path_medicine,
-                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment)
+                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment,
+                                           vital_norm_stats=self.vital_norm, lab_norm_stats=self.lab_norm)
            
             self.val_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='val',
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab, lmdb_path_medicine=self.lmdb_path_medicine,
-                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment)
+                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment,
+                                           vital_norm_stats=self.vital_norm, lab_norm_stats=self.lab_norm)
 
         if stage in (None, 'test'):
             self.test_ds = MultimodalData(self.listfile, modalities=self.modalities, task_type=self.task_type, split='test',
                                            lmdb_path_vital=self.lmdb_path_vital, lmdb_path_lab=self.lmdb_path_lab, lmdb_path_medicine=self.lmdb_path_medicine,
-                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment)
+                                           demographic_file = self.demographic, diagnosis_file=self.diagnosis, treatment_file=self.treatment,
+                                           vital_norm_stats=self.vital_norm, lab_norm_stats=self.lab_norm)
 
     def train_dataloader(self):
         return DataLoader(
