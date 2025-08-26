@@ -19,65 +19,103 @@ class MultimodalCollate:
         return x
 
     @staticmethod
-    def _prep_seq_modality(items, drop_first_col=False):
+    def _extract_val_mask(item, drop_first_col: bool):
         """
-        items: list of per-sample payloads for a modality.
-               Each item can be:
-               - dict with 'value' (TxD) and optional 'mask' (TxD)
-               - tensor/ndarray (TxD)
-               - None (missing)
-        Returns: list of dicts with 'value' (float32, NaNs->0, optional col-drop) and 'mask' (float32).
+        Convert a per-sample payload into (val, mask), dropping first feature column if requested.
+        - item can be dict with 'value' and optional 'mask', or a raw tensor/ndarray, or None.
+        - returns (val, mask) as float32 tensors, or (None, None) if item is None.
         """
-        # Find a reference shape
-        ref_val = None
-        for it in items:
-            if it is None:
-                continue
-            if isinstance(it, dict) and 'value' in it and it['value'] is not None:
-                ref_val = torch.as_tensor(it['value'])
-                break
-            elif torch.is_tensor(it) or (it is not None):
-                try:
-                    ref_val = torch.as_tensor(it)
-                    break
-                except Exception:
-                    pass
+        if item is None:
+            return None, None
 
-        out = []
-        for it in items:
-            if it is None:
-                if ref_val is None:
-                    out.append(None)
-                else:
-                    zeros = torch.zeros_like(ref_val, dtype=torch.float32)
-                    mask  = torch.zeros_like(ref_val, dtype=torch.float32)
-                    if drop_first_col:
-                        zeros = zeros[..., 1:]
-                        mask  = mask[..., 1:]
-                    out.append({'value': zeros, 'mask': mask})
-                continue
+        if isinstance(item, dict) and 'value' in item:
+            val = torch.as_tensor(item['value'], dtype=torch.float32)
+            mask = item.get('mask', None)
+            mask = torch.as_tensor(mask, dtype=torch.float32) if mask is not None else torch.isfinite(val).float()
+        else:
+            val = torch.as_tensor(item, dtype=torch.float32)
+            mask = torch.isfinite(val).float()
 
-            # Normalize shape/content
-            if isinstance(it, dict) and 'value' in it:
-                val = torch.as_tensor(it['value'], dtype=torch.float32)
-                mask = torch.as_tensor(it.get('mask', torch.isfinite(val).float()), dtype=torch.float32)
-            else:
-                val = torch.as_tensor(it, dtype=torch.float32)
-                mask = torch.isfinite(val).float()
-
-            # Drop the first column (hour) if requested
-            if drop_first_col and val.ndim >= 2 and val.shape[1] > 1:
+        # drop left-most column (hour)
+        if drop_first_col and val.ndim >= 2 and val.shape[1] > 0:
+            # assume shape T x D
+            if val.shape[1] > 1:
                 val  = val[:, 1:]
                 mask = mask[:, 1:]
+            else:
+                # if only the hour column exists, drop to shape T x 0
+                val  = val[:, 0:0]
+                mask = mask[:, 0:0]
 
-            # Replace NaNs with 0 and zero-out mask
-            is_finite = torch.isfinite(val)
-            mask = mask * is_finite.float()
-            val = torch.where(is_finite, val, torch.zeros_like(val))
+        # replace NaN/inf with 0; zero out mask there
+        finite = torch.isfinite(val)
+        mask = mask * finite.float()
+        val = torch.where(finite, val, torch.zeros_like(val))
+        return val, mask
 
-            out.append({'value': val, 'mask': mask})
+    @staticmethod
+    def _pad_and_stack(seq_items, drop_first_col: bool):
+        """
+        seq_items: list of per-sample items (dict/tensor/None).
+        Returns dict with:
+          'value': (B, T_max, D) float32
+          'mask' : (B, T_max, D) float32
+        If ALL samples are missing or reduce to D=0, returns empty tensors with proper batch dim.
+        """
+        vals, masks = [], []
+        D = None
+        T_max = 0
 
-        return out
+        # first pass: extract tensors and infer D, T_max
+        tmp = []
+        for it in seq_items:
+            val, mask = MultimodalCollate._extract_val_mask(it, drop_first_col=drop_first_col)
+            tmp.append((val, mask))
+            if val is not None:
+                if D is None:
+                    # infer feature dim (handle T x 0 edge-case)
+                    D = val.shape[1] if (val.ndim >= 2) else 1
+                T_max = max(T_max, val.shape[0])
+
+        if D is None:
+            # all missing or all dropped -> return empty feature tensors
+            B = len(seq_items)
+            empty = torch.zeros((B, 0, 0), dtype=torch.float32)
+            return {'value': empty, 'mask': empty}
+
+        # second pass: pad to (T_max, D), fill missing samples with zeros
+        for (val, mask) in tmp:
+            if val is None:
+                # create zeros for missing sample
+                v = torch.zeros((T_max, D), dtype=torch.float32)
+                m = torch.zeros((T_max, D), dtype=torch.float32)
+            else:
+                # ensure val has expected D (it can be 0 if only hour was present)
+                cur_D = val.shape[1] if val.ndim >= 2 else 1
+                if cur_D != D:
+                    # pad feature dim if needed (rare; keeps code robust)
+                    pad_feat = D - cur_D
+                    if pad_feat < 0:
+                        val  = val[:, :D]
+                        mask = mask[:, :D]
+                    else:
+                        val  = torch.nn.functional.pad(val, (0, pad_feat))
+                        mask = torch.nn.functional.pad(mask, (0, pad_feat))
+
+                # pad time dim
+                pad_T = T_max - val.shape[0]
+                if pad_T > 0:
+                    pad_shape = (pad_T, 0) if val.ndim == 2 else (pad_T,)
+                    val  = torch.nn.functional.pad(val, (0, 0, 0, pad_T))
+                    mask = torch.nn.functional.pad(mask, (0, 0, 0, pad_T))
+                v, m = val, mask
+
+            vals.append(v)
+            masks.append(m)
+
+        value = torch.stack(vals, dim=0)  # (B, T_max, D)
+        mask  = torch.stack(masks, dim=0) # (B, T_max, D)
+        return {'value': value, 'mask': mask}
 
     def __call__(self, batch):
         # batch: iterable of (outs, flags, label)
@@ -85,7 +123,6 @@ class MultimodalCollate:
 
         seq_data = {}
 
-        # Static modalities
         if 'demographic' in self.modalities:
             demo = [o['demographic'] for o in outs_list]
             seq_data['demographic'] = torch.stack(demo, dim=0)
@@ -98,20 +135,19 @@ class MultimodalCollate:
             trt = [o['treatment'] for o in outs_list]
             seq_data['treatment'] = torch.stack(trt, dim=0)
 
-        # Time-series modalities (remove hour col)
         if 'vital' in self.modalities:
             vital_items = [o['vital'] for o in outs_list]
-            seq_data['vital'] = self._prep_seq_modality(vital_items, drop_first_col=True)
+            seq_data['vital'] = self._pad_and_stack(vital_items, drop_first_col=True)
 
         if 'lab' in self.modalities:
             lab_items = [o['lab'] for o in outs_list]
-            seq_data['lab'] = self._prep_seq_modality(lab_items, drop_first_col=True)
+            seq_data['lab'] = self._pad_and_stack(lab_items, drop_first_col=True)
 
         if 'medicine' in self.modalities:
             meds = [o['medicine'] for o in outs_list]
-            seq_data['medicine'] = meds
+            seq_data['medicine'] = self._pad_and_stack(meds, drop_first_col=True)
 
-        # Present mask (sample-level, modality present or missing)
+        # sample-level presence mask
         present_mask = {}
         for mod in self.modalities:
             mask = torch.tensor(
@@ -124,7 +160,7 @@ class MultimodalCollate:
         seq_data = self._to_f32(seq_data)
 
         return {
-            "inputs": seq_data,
-            "present_mask": present_mask,
+            "inputs": seq_data,          # tensors for vitals/labs; dicts: {'value': (B,T,D), 'mask': (B,T,D)}
+            "present_mask": present_mask, # (B,) per modality
             "labels": labels
         }
