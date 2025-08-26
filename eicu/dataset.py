@@ -147,7 +147,7 @@ class MultimodalData(Dataset):
         return pickle.loads(raw), False
 
     def _load_medicine(self, idx):
-        raw = self._get('medicine', self.med_keys[idx])
+        raw = self._get('medicine', self.medicine_keys[idx])
         if raw is None:
             return None, True
         return pickle.loads(raw), False
