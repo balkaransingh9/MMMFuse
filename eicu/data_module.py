@@ -40,6 +40,22 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.diagnosis = pd.read_csv(csv_path_diagnosis)
         self.treatment = pd.read_csv(csv_path_treatment)
 
+        if not self.demographic.empty:
+            pid_col = self.demographic["patientunitstayid"]
+            self.demographic = self.demographic.drop(columns=["patientunitstayid"]).astype("float32")
+            self.demographic.insert(0, "patientunitstayid", pid_col)
+
+        if not self.diagnosis.empty:
+            pid_col = self.diagnosis["patientunitstayid"]
+            self.diagnosis = self.diagnosis.drop(columns=["patientunitstayid"]).astype("int32")
+            self.diagnosis.insert(0, "patientunitstayid", pid_col)
+
+        if not self.treatment.empty:
+            pid_col = self.treatment["patientunitstayid"]
+            self.treatment = self.treatment.drop(columns=["patientunitstayid"]).astype("int32")
+            self.treatment.insert(0, "patientunitstayid", pid_col)
+
+
 
     def prepare_data(self):
         pass
