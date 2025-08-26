@@ -16,7 +16,8 @@ class MultimodalDataModule(pl.LightningDataModule):
     def __init__(self, listfile, task_type='mortality', modalities = ['vital','lab','medicine','text'],
                  lmdb_path_vital = '', lmdb_path_lab = '', lmdb_path_medicine = '',
                  csv_path_demographic = '', csv_path_diagnosis = '', csv_path_treatment = '',
-                 batch_size=64, num_workers=4):
+                 batch_size=64, num_workers=4, pin_memory=True, prefetch_factor=2, 
+                 persistent_workers=False, multiprocessing_context="forkserver"):
         
         super().__init__()
         self.listfile = listfile
@@ -35,7 +36,10 @@ class MultimodalDataModule(pl.LightningDataModule):
         
         self.batch_size = batch_size
         self.num_workers = num_workers
-
+        self.pin_memory = pin_memory
+        self.prefetch_factor = prefetch_factor
+        self.persistent_workers = persistent_workers
+        self.multiprocessing_context = multiprocessing_context
 
         #static modalities
         self.demographic = pd.read_csv(csv_path_demographic)
@@ -89,8 +93,10 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=True,
-            prefetch_factor=2,
+            multiprocessing_context=self.multiprocessing_context,
+            persistent_workers=self.persistent_workers,
+            pin_memory=self.pin_memory,
+            prefetch_factor=self.prefetch_factor,
             collate_fn=MultimodalCollate(modalities=self.modalities, task_type=self.task_type)
         )
     
@@ -100,8 +106,10 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
-            prefetch_factor=2,
+            multiprocessing_context=self.multiprocessing_context,
+            persistent_workers=self.persistent_workers,
+            pin_memory=self.pin_memory,
+            prefetch_factor=self.prefetch_factor,
             collate_fn=MultimodalCollate(modalities=self.modalities, task_type=self.task_type)
         )
 
@@ -111,6 +119,8 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
+            multiprocessing_context=self.multiprocessing_context,
+            persistent_workers=self.persistent_workers,
+            pin_memory=self.pin_memory,
             collate_fn=MultimodalCollate(modalities=self.modalities, task_type=self.task_type)
         )
