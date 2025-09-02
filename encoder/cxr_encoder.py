@@ -609,9 +609,8 @@ def load_weights_safely(
 
 class SpikeImageFeats(nn.Module):
     def __init__(self,
-                 backbone_ctor,             
+                 backbone,             
                  ckpt_path: str = None,     
-                 backbone_kwargs: dict = None,
                  out_dim: int = None,       
                  stage: str = "prehead",    
                  time_reduce: str = "mean", 
@@ -619,7 +618,7 @@ class SpikeImageFeats(nn.Module):
                  verbose_load: bool = True):
         super().__init__()
         backbone_kwargs = backbone_kwargs or {}
-        self.backbone = backbone_ctor(**backbone_kwargs)
+        self.backbone = backbone
         self.stage = stage
         self.time_reduce = time_reduce
 
