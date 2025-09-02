@@ -535,27 +535,98 @@ class SpikeDrivenTransformer(nn.Module):
             x = x.mean(0)
         return x, hook
 
+import re
+
+def _unwrap_state_dict(sd):
+    if isinstance(sd, dict) and "state_dict" in sd and isinstance(sd["state_dict"], dict):
+        return sd["state_dict"]
+    return sd
+
+def _strip_known_prefixes(sd, prefixes=("model.", "net.", "backbone.")):
+    remapped = {}
+    for k, v in sd.items():
+        for p in prefixes:
+            if k.startswith(p):
+                k = k[len(p):]
+                break
+        remapped[k] = v
+    return remapped
+
+def _auto_prefix_alignment(sd_keys):
+    if not sd_keys:
+        return None
+    first = sd_keys[0]
+    if "." in first:
+        root = first.split(".")[0] + "."
+        if all(k.startswith(root) for k in sd_keys):
+            return root
+    return None
+
+def load_weights_safely(
+    model,
+    ckpt_path: str,
+    drop_head: bool = True,
+    head_key_regex: str = r"^head\.(weight|bias)$",
+    verbose: bool = True,
+):
+    sd_raw = torch.load(ckpt_path, map_location="cpu")
+    sd = _unwrap_state_dict(sd_raw)
+
+    if drop_head:
+        pat = re.compile(head_key_regex)
+        sd = {k: v for k, v in sd.items() if not pat.match(k)}
+
+    auto = _auto_prefix_alignment(list(sd.keys()))
+    if auto:
+        sd = {k[len(auto):]: v for k, v in sd.items()}
+
+    sd = _strip_known_prefixes(sd, prefixes=("model.", "net.", "backbone."))
+
+    model_sd = model.state_dict()
+    ok, skipped_by_shape = {}, []
+    for k, v in sd.items():
+        if k in model_sd and model_sd[k].shape == v.shape:
+            ok[k] = v
+        elif k in model_sd:
+            skipped_by_shape.append(k)
+
+    missing, unexpected = model.load_state_dict(ok, strict=False)
+
+    if verbose:
+        print(f"[safe-load] from: {ckpt_path}")
+        print(f"  loaded params: {len(ok)}")
+        print(f"  skipped by shape: {len(skipped_by_shape)}")
+        if skipped_by_shape:
+            print("  e.g.", skipped_by_shape[:8])
+        print(f"  missing in ckpt (but in model): {len(missing)}")
+        if missing:
+            print("  e.g.", missing[:8])
+        print(f"  unexpected in ckpt (no match in model): {len(unexpected)}")
+        if unexpected:
+            print("  e.g.", unexpected[:8])
+
+    return missing, unexpected, skipped_by_shape
+
 class SpikeImageFeats(nn.Module):
-    def __init__(self, backbone: nn.Module, ckpt_path: str,
-                 out_dim: int = None,           
-                 stage: str = "prehead",        
-                 time_reduce: str = "mean",     
-                 ignore_head: bool = True):
+    def __init__(self,
+                 backbone_ctor,             
+                 ckpt_path: str = None,     
+                 backbone_kwargs: dict = None,
+                 out_dim: int = None,       
+                 stage: str = "prehead",    
+                 time_reduce: str = "mean", 
+                 drop_head: bool = True,    
+                 verbose_load: bool = True):
         super().__init__()
-        self.backbone = backbone
+        backbone_kwargs = backbone_kwargs or {}
+        self.backbone = backbone_ctor(**backbone_kwargs)
         self.stage = stage
         self.time_reduce = time_reduce
 
-        sd = torch.load(ckpt_path, map_location="cpu")
-        if "state_dict" in sd:
-            sd = sd["state_dict"]
-        if ignore_head:
-            sd = {k: v for k, v in sd.items()
-                  if not (k.endswith("head.weight") or k.endswith("head.bias"))}
-        missing, unexpected = self.backbone.load_state_dict(sd, strict=False)
-        print(f"[SpikeImageFeats] loaded from {ckpt_path}\n  missing={len(missing)} unexpected={len(unexpected)}")
+        if ckpt_path is not None:
+            load_weights_safely(self.backbone, ckpt_path, drop_head=drop_head, verbose=verbose_load)
 
-        in_dim = backbone.head.in_features
+        in_dim = self.backbone.head.in_features
         if out_dim is None or out_dim == in_dim:
             self.proj = nn.Identity()
             self.out_dim = in_dim
@@ -579,27 +650,25 @@ class SpikeImageFeats(nn.Module):
         else:
             raise ValueError(f"Expected (B,C,H,W) or (T,B,C,H,W), got {tuple(images.shape)}")
 
-        feats, _ = self.backbone.forward_features(x, hook=None)  # (T,B,D)
+        feats, _ = self.backbone.forward_features(x, hook=None)  
 
         if self.stage.lower() == "head_lif":
-            feats = self.backbone.head_lif(feats)                 # (T,B,D)
+            feats = self.backbone.head_lif(feats)                 
 
-        # time reduction
         if self.time_reduce == "mean":
-            feats = feats.mean(0)                                 # (B,D)
+            feats = feats.mean(0)                                
         elif self.time_reduce == "sum":
             feats = feats.sum(0)
         elif self.time_reduce == "last":
             feats = feats[-1]
         elif self.time_reduce == "none":
-            pass                                                  # (T,B,D)
+            pass
         else:
             raise ValueError("time_reduce must be 'mean'|'sum'|'last'|'none'")
 
-        # project
         if self.time_reduce == "none":
             T,B,D = feats.shape
             feats = self.proj(feats.view(T*B, D)).view(T, B, self.out_dim)
             return feats
         else:
-            return self.proj(feats)                               # (B,out_dim)
+            return self.proj(feats)
