@@ -523,7 +523,7 @@ class SpikeImageFeats(nn.Module):
           if time_reduce != 'none': (B, out_dim)
           else:                     (T,B,out_dim)
         """
-        sjF.reset_net(self.backbone)
+        abF.reset_net(self.backbone)
 
         if images.dim() == 4:
             x = images.unsqueeze(0).repeat(self.backbone.T, 1, 1, 1, 1)
