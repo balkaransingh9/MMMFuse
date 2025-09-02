@@ -534,3 +534,72 @@ class SpikeDrivenTransformer(nn.Module):
         if not self.TET:
             x = x.mean(0)
         return x, hook
+
+class SpikeImageFeats(nn.Module):
+    def __init__(self, backbone: nn.Module, ckpt_path: str,
+                 out_dim: int = None,           
+                 stage: str = "prehead",        
+                 time_reduce: str = "mean",     
+                 ignore_head: bool = True):
+        super().__init__()
+        self.backbone = backbone
+        self.stage = stage
+        self.time_reduce = time_reduce
+
+        sd = torch.load(ckpt_path, map_location="cpu")
+        if "state_dict" in sd:
+            sd = sd["state_dict"]
+        if ignore_head:
+            sd = {k: v for k, v in sd.items()
+                  if not (k.endswith("head.weight") or k.endswith("head.bias"))}
+        missing, unexpected = self.backbone.load_state_dict(sd, strict=False)
+        print(f"[SpikeImageFeats] loaded from {ckpt_path}\n  missing={len(missing)} unexpected={len(unexpected)}")
+
+        in_dim = backbone.head.in_features
+        if out_dim is None or out_dim == in_dim:
+            self.proj = nn.Identity()
+            self.out_dim = in_dim
+        else:
+            self.proj = nn.Sequential(nn.LayerNorm(in_dim), nn.Linear(in_dim, out_dim))
+            self.out_dim = out_dim
+
+    def forward(self, images: torch.Tensor):
+        """
+        images: (B,C,H,W) or (T,B,C,H,W)
+        returns:
+          if time_reduce != 'none': (B, out_dim)
+          else:                     (T,B,out_dim)
+        """
+        sjF.reset_net(self.backbone)
+
+        if images.dim() == 4:
+            x = images.unsqueeze(0).repeat(self.backbone.T, 1, 1, 1, 1)
+        elif images.dim() == 5:
+            x = images
+        else:
+            raise ValueError(f"Expected (B,C,H,W) or (T,B,C,H,W), got {tuple(images.shape)}")
+
+        feats, _ = self.backbone.forward_features(x, hook=None)  # (T,B,D)
+
+        if self.stage.lower() == "head_lif":
+            feats = self.backbone.head_lif(feats)                 # (T,B,D)
+
+        # time reduction
+        if self.time_reduce == "mean":
+            feats = feats.mean(0)                                 # (B,D)
+        elif self.time_reduce == "sum":
+            feats = feats.sum(0)
+        elif self.time_reduce == "last":
+            feats = feats[-1]
+        elif self.time_reduce == "none":
+            pass                                                  # (T,B,D)
+        else:
+            raise ValueError("time_reduce must be 'mean'|'sum'|'last'|'none'")
+
+        # project
+        if self.time_reduce == "none":
+            T,B,D = feats.shape
+            feats = self.proj(feats.view(T*B, D)).view(T, B, self.out_dim)
+            return feats
+        else:
+            return self.proj(feats)                               # (B,out_dim)
