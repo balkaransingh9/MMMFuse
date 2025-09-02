@@ -617,7 +617,6 @@ class SpikeImageFeats(nn.Module):
                  drop_head: bool = True,    
                  verbose_load: bool = True):
         super().__init__()
-        backbone_kwargs = backbone_kwargs or {}
         self.backbone = backbone
         self.stage = stage
         self.time_reduce = time_reduce
