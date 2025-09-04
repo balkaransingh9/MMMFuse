@@ -516,7 +516,7 @@ class SpikeImageFeats(nn.Module):
             self.proj = nn.Sequential(nn.LayerNorm(in_dim), nn.Linear(in_dim, out_dim))
             self.out_dim = out_dim
 
-    def forward(self, images: torch.Tensor):
+    def forward(self, images: torch.Tensor, return_spikes: bool = False):
         """
         images: (B,C,H,W) or (T,B,C,H,W)
         returns:
@@ -532,7 +532,8 @@ class SpikeImageFeats(nn.Module):
         else:
             raise ValueError(f"Expected (B,C,H,W) or (T,B,C,H,W), got {tuple(images.shape)}")
 
-        feats, _ = self.backbone.forward_features(x, hook=None)  
+        hook = {} if return_spikes else None
+        feats, hook = self.backbone.forward_features(x, hook=hook)  
 
         if self.stage.lower() == "head_lif":
             feats = self.backbone.head_lif(feats)                 
@@ -551,6 +552,10 @@ class SpikeImageFeats(nn.Module):
         if self.time_reduce == "none":
             T,B,D = feats.shape
             feats = self.proj(feats.view(T*B, D)).view(T, B, self.out_dim)
-            return feats
         else:
-            return self.proj(feats)
+            feats = self.proj(feats)
+        
+        if return_spikes:
+            return feats, hook
+        else:
+            return feats
