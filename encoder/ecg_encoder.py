@@ -43,7 +43,7 @@ class ECGSpikingEncoder(nn.Module):
         functional.set_step_mode(self, 'm')
         functional.set_backend(self, 'cupy')
 
-    def forward(self, x, return_spikes = False):
+    def forward(self, x, return_spikes = False, return_rates=False):
         # x = inputs['ecg']
         steps = self.patcher(x)          # (T, B, D)
         functional.reset_net(self)       # reset spiking states
@@ -58,6 +58,9 @@ class ECGSpikingEncoder(nn.Module):
         z = s2.mean(dim=0)               # temporal average (B, H2)
         # return self.readout(z)           # (B, out_dim)
         if return_spikes:
-            return {"s1":s1, "s2":s2}
+            if return_rates:
+                return z, [s1.mean, s2.mean()]
+            else:
+                return z, {"s1":s1, "s2":s2}
         else:
             return z
