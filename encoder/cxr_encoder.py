@@ -1,15 +1,13 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from functools import partial
-from timm.models.layers import trunc_normal_, to_2tuple
-from timm.models.layers import DropPath
+from timm.models.layers import trunc_normal_, to_2tuple, DropPath
 
 from spikingjelly.activation_based import layer as abL
 from spikingjelly.activation_based.neuron import LIFNode, ParametricLIFNode
 from spikingjelly.activation_based import functional as abF
 
+# ---------- helpers ----------
 def _make_neuron(spike_mode: str, *, tau=2.0, v_threshold=0.5, step_mode='m', detach_reset=True):
     if spike_mode == "lif":
         return LIFNode(tau=tau, v_threshold=v_threshold, detach_reset=detach_reset, step_mode=step_mode)
@@ -18,72 +16,65 @@ def _make_neuron(spike_mode: str, *, tau=2.0, v_threshold=0.5, step_mode='m', de
     else:
         raise ValueError(f"Unsupported spike_mode: {spike_mode}")
 
+def _save_hook(hook, name, x, hook_grad: bool):
+    if hook is not None:
+        hook[name] = x if hook_grad else x.detach()
+
+# ---------- layers ----------
 class Erode(nn.Module):
-    """
-    MaxPool3d over spatial dims while preserving time.
-    Input/Output: [T, B, C, H, W]
-    """
+    """MaxPool3d over spatial dims while preserving time. I/O: [T,B,C,H,W]"""
     def __init__(self) -> None:
         super().__init__()
-        self.pool = nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 1, 1), padding=(0, 1, 1))
+        self.pool = nn.MaxPool3d(kernel_size=(1,3,3), stride=(1,1,1), padding=(0,1,1))
 
     def forward(self, x):
-        x = x.permute(1, 2, 0, 3, 4).contiguous()
+        # [T,B,C,H,W] -> [B,C,T,H,W] -> pool -> [T,B,C,H,W]
+        x = x.permute(1,2,0,3,4).contiguous()
         x = self.pool(x)
-        x = x.permute(2, 0, 1, 3, 4).contiguous()
+        x = x.permute(2,0,1,3,4).contiguous()
         return x
-
 
 class MS_MLP_Conv(nn.Module):
     """
-    Time-aware (activation_based) MLP with 1x1 convs.
-    Input/Output: [T, B, C, H, W]
+    Time-aware MLP with 1x1 convs, activation_based. I/O: [T,B,C,H,W]
     """
     def __init__(self, in_features, hidden_features=None, out_features=None,
                  drop=0.0, spike_mode="lif", layer=0):
         super().__init__()
-        out_features = out_features or in_features
+        out_features  = out_features  or in_features
         hidden_features = hidden_features or in_features
-        self.res = in_features == hidden_features
-        self.layer = layer
+        self.res    = in_features == hidden_features
+        self.layer  = layer
         self.c_hidden = hidden_features
         self.c_output = out_features
 
-        self.fc1_conv = abL.Conv2d(in_features, hidden_features, kernel_size=1, stride=1, bias=True)
+        self.fc1_conv = abL.Conv2d(in_features, hidden_features, 1, 1, bias=True)
         self.fc1_bn   = abL.BatchNorm2d(hidden_features)
         self.fc1_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-        self.fc2_conv = abL.Conv2d(hidden_features, out_features, kernel_size=1, stride=1, bias=True)
+        self.fc2_conv = abL.Conv2d(hidden_features, out_features, 1, 1, bias=True)
         self.fc2_bn   = abL.BatchNorm2d(out_features)
         self.fc2_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-    def forward(self, x, hook=None):
+    def forward(self, x, hook=None, hook_grad: bool=False):
         identity = x
-
-        x = self.fc1_conv(x)
-        x = self.fc1_bn(x)
-        x = self.fc1_lif(x)
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_fc1_lif"] = x.detach()
+        x = self.fc1_conv(x); x = self.fc1_bn(x); x = self.fc1_lif(x)
+        _save_hook(hook, self._get_name()+str(self.layer)+"_fc1_lif", x, hook_grad)
 
         if self.res:
             x = x + identity
             identity = x
 
-        x = self.fc2_conv(x)
-        x = self.fc2_bn(x)
-        x = self.fc2_lif(x)
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_fc2_lif"] = x.detach()
+        x = self.fc2_conv(x); x = self.fc2_bn(x); x = self.fc2_lif(x)
+        _save_hook(hook, self._get_name()+str(self.layer)+"_fc2_lif", x, hook_grad)
 
         x = x + identity
         return x, hook
 
-
 class MS_SSA_Conv(nn.Module):
     """
-    Time-aware spiking self-attention-ish block using multiplicative q*(k*v).
-    All convs/BNs are activation_based layers that accept [T, B, C, H, W].
+    Spiking self-attention-ish block using multiplicative q*(k*v).
+    All convs/BNs are activation_based for [T,B,C,H,W].
     """
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None,
                  attn_drop=0.0, proj_drop=0.0, sr_ratio=1, mode="direct_xor",
@@ -99,109 +90,75 @@ class MS_SSA_Conv(nn.Module):
         if dvs:
             self.pool3d = Erode()
 
-        self.q_conv = abL.Conv2d(dim, dim, kernel_size=1, stride=1, bias=qkv_bias)
+        self.q_conv = abL.Conv2d(dim, dim, 1, 1, bias=qkv_bias)
         self.q_bn   = abL.BatchNorm2d(dim)
         self.q_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-        self.k_conv = abL.Conv2d(dim, dim, kernel_size=1, stride=1, bias=qkv_bias)
+        self.k_conv = abL.Conv2d(dim, dim, 1, 1, bias=qkv_bias)
         self.k_bn   = abL.BatchNorm2d(dim)
         self.k_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-        self.v_conv = abL.Conv2d(dim, dim, kernel_size=1, stride=1, bias=qkv_bias)
+        self.v_conv = abL.Conv2d(dim, dim, 1, 1, bias=qkv_bias)
         self.v_bn   = abL.BatchNorm2d(dim)
         self.v_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-        self.talking_heads = nn.Conv1d(num_heads, num_heads, kernel_size=1, stride=1, bias=False)
+        self.talking_heads     = nn.Conv1d(num_heads, num_heads, 1, 1, bias=False)
         self.talking_heads_lif = _make_neuron(spike_mode, tau=2.0, v_threshold=0.5, step_mode='m')
 
-        self.proj_conv = abL.Conv2d(dim, dim, kernel_size=1, stride=1, bias=True)
+        self.proj_conv = abL.Conv2d(dim, dim, 1, 1, bias=True)
         self.proj_bn   = abL.BatchNorm2d(dim)
 
         self.shortcut_lif = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-    def forward(self, x, hook=None):
+    def forward(self, x, hook=None, hook_grad: bool=False):
         identity = x
-        T, B, C, H, W = x.shape
+        T,B,C,H,W = x.shape
         N = H * W
 
         x = self.shortcut_lif(x)
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_first_lif"] = x.detach()
+        _save_hook(hook, self._get_name()+str(self.layer)+"_first_lif", x, hook_grad)
 
-        q = self.q_lif(self.q_bn(self.q_conv(x)))          # [T,B,C,H,W]
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_q_lif"] = q.detach()
+        q = self.q_lif(self.q_bn(self.q_conv(x)))   # [T,B,C,H,W]
+        _save_hook(hook, self._get_name()+str(self.layer)+"_q_lif", q, hook_grad)
+        q = (q.flatten(3).transpose(-1,-2)
+               .reshape(T,B,N,self.num_heads,C//self.num_heads)
+               .permute(0,1,3,2,4).contiguous())   # [T,B,heads,N,Ch]
 
-        q = (
-            q.flatten(3)                                   # [T,B,C,N]
-             .transpose(-1, -2)                            # [T,B,N,C]
-             .reshape(T, B, N, self.num_heads, C // self.num_heads)
-             .permute(0, 1, 3, 2, 4)                       # [T,B,heads,N,Ch]
-             .contiguous()
-        )
+        k = self.k_lif(self.k_bn(self.k_conv(x)))
+        if self.dvs: k = self.pool3d(k)
+        _save_hook(hook, self._get_name()+str(self.layer)+"_k_lif", k, hook_grad)
+        k = (k.flatten(3).transpose(-1,-2)
+               .reshape(T,B,N,self.num_heads,C//self.num_heads)
+               .permute(0,1,3,2,4).contiguous())
 
-        k = self.k_lif(self.k_bn(self.k_conv(x)))          # [T,B,C,H,W]
-        if self.dvs:
-            k = self.pool3d(k)
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_k_lif"] = k.detach()
-        k = (
-            k.flatten(3).transpose(-1, -2)
-             .reshape(T, B, N, self.num_heads, C // self.num_heads)
-             .permute(0, 1, 3, 2, 4)
-             .contiguous()
-        )
+        v = self.v_lif(self.v_bn(self.v_conv(x)))
+        if self.dvs: v = self.pool3d(v)
+        _save_hook(hook, self._get_name()+str(self.layer)+"_v_lif", v, hook_grad)
+        v = (v.flatten(3).transpose(-1,-2)
+               .reshape(T,B,N,self.num_heads,C//self.num_heads)
+               .permute(0,1,3,2,4).contiguous())
 
-        v = self.v_lif(self.v_bn(self.v_conv(x)))          # [T,B,C,H,W]
-        if self.dvs:
-            v = self.pool3d(v)
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_v_lif"] = v.detach()
-        v = (
-            v.flatten(3).transpose(-1, -2)
-             .reshape(T, B, N, self.num_heads, C // self.num_heads)
-             .permute(0, 1, 3, 2, 4)
-             .contiguous()
-        )  # [T,B,heads,N,Ch]
+        kv = k.mul(v)                        # [T,B,heads,N,Ch]
+        _save_hook(hook, self._get_name()+str(self.layer)+"_kv_before", kv, hook_grad)
 
-        kv = k.mul(v)                                      # [T,B,heads,N,Ch]
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_kv_before"] = kv.detach()
+        kv = kv.sum(dim=-2, keepdim=True)    # [T,B,heads,1,Ch]
+        kv_1d = kv.view(T*B, self.num_heads, 1, -1).squeeze(2)  # [T*B, heads, Ch]
+        kv_1d = self.talking_heads(kv_1d)                       # [T*B, heads, Ch]
+        kv = kv_1d.view(T,B,self.num_heads,1,-1)
+        kv = self.talking_heads_lif(kv)
+        _save_hook(hook, self._get_name()+str(self.layer)+"_kv", kv, hook_grad)
 
-        kv = kv.sum(dim=-2, keepdim=True)                  # [T,B,heads,1,Ch]
+        x_att = q.mul(kv)                    # [T,B,heads,N,Ch]
+        _save_hook(hook, self._get_name()+str(self.layer)+"_x_after_qkv", x_att, hook_grad)
 
-        kv_1d = kv.view(T * B, self.num_heads, 1, -1).squeeze(2)  # [T*B, heads, Ch]
-        kv_1d = self.talking_heads(kv_1d)                        # [T*B, heads, Ch]
-        kv = kv_1d.view(T, B, self.num_heads, 1, -1)
-        kv = self.talking_heads_lif(kv)                           # spike over heads dimension
-
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_kv"] = kv.detach()
-
-        x_att = q.mul(kv)                                  # [T,B,heads,N,Ch]
-        if self.dvs:
-            x_for_pool = (
-                x_att.transpose(3, 4)                      # [T,B,heads,Ch,N]
-                     .reshape(T, B, C, N)                  # [T,B,C,N]
-                     .transpose(-1, -2)                    # [T,B,N,C]
-            )
-            x_for_pool = x_for_pool.transpose(2, 3)        # [T,B,C,N] (no-op but kept for clarity)
-            pass
-
-        if hook is not None:
-            hook[self._get_name() + str(self.layer) + "_x_after_qkv"] = x_att.detach()
-
-        # merge heads back to channels and project
-        x_att = x_att.transpose(3, 4).reshape(T, B, C, H, W).contiguous()  # [T,B,C,H,W]
-        x_out = self.proj_bn(self.proj_conv(x_att))                        # [T,B,C,H,W]
-
+        x_att = x_att.transpose(3,4).reshape(T,B,C,H,W).contiguous()
+        x_out = self.proj_bn(self.proj_conv(x_att))
         x_out = x_out + identity
         return x_out, v, hook
 
-
 class MS_Block_Conv(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4.0, qkv_bias=False,
-                 qk_scale=None, drop=0.0, attn_drop=0.0, drop_path=0.0,
+    def __init__(self, dim, num_heads, mlp_ratio=4.0, qkv_bias=False, qk_scale=None,
+                 drop=0.0, attn_drop=0.0, drop_path=0.0,
                  norm_layer=nn.LayerNorm, sr_ratio=1, attn_mode="direct_xor",
                  spike_mode="lif", dvs=False, layer=0):
         super().__init__()
@@ -212,20 +169,17 @@ class MS_Block_Conv(nn.Module):
         )
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = MS_MLP_Conv(
-            in_features=dim, hidden_features=mlp_hidden_dim, drop=drop, spike_mode=spike_mode, layer=layer
-        )
+        self.mlp = MS_MLP_Conv(in_features=dim, hidden_features=mlp_hidden_dim,
+                               drop=drop, spike_mode=spike_mode, layer=layer)
 
-    def forward(self, x, hook=None):
-        x_attn, attn_feat, hook = self.attn(x, hook=hook)
-        x, hook = self.mlp(x_attn, hook=hook)
+    def forward(self, x, hook=None, hook_grad: bool=False):
+        x_attn, attn_feat, hook = self.attn(x, hook=hook, hook_grad=hook_grad)
+        x, hook = self.mlp(x_attn, hook=hook, hook_grad=hook_grad)
         return x, attn_feat, hook
-
 
 class MS_SPS(nn.Module):
     """
-    Spiking Patch/Stem with hierarchical downsampling.
-    All ops are activation_based, so x stays [T, B, C, H, W].
+    Spiking Patch/Stem with hierarchical downsampling. I/O: [T,B,C,H,W]
     """
     def __init__(self, img_size_h=128, img_size_w=128, patch_size=4,
                  in_channels=2, embed_dims=256, pooling_stat="1111", spike_mode="lif"):
@@ -234,85 +188,76 @@ class MS_SPS(nn.Module):
         patch_size = to_2tuple(patch_size)
         self.patch_size = patch_size
         self.pooling_stat = pooling_stat
-
         self.C = in_channels
 
         # stage 0
-        self.proj_conv = abL.Conv2d(in_channels, embed_dims // 8, kernel_size=3, stride=1, padding=1, bias=False)
+        self.proj_conv = abL.Conv2d(in_channels, embed_dims // 8, 3, 1, 1, bias=False)
         self.proj_bn   = abL.BatchNorm2d(embed_dims // 8)
         self.proj_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
-        self.maxpool   = abL.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.maxpool   = abL.MaxPool2d(3, 2, 1)
 
         # stage 1
-        self.proj_conv1 = abL.Conv2d(embed_dims // 8, embed_dims // 4, kernel_size=3, stride=1, padding=1, bias=False)
+        self.proj_conv1 = abL.Conv2d(embed_dims // 8, embed_dims // 4, 3, 1, 1, bias=False)
         self.proj_bn1   = abL.BatchNorm2d(embed_dims // 4)
         self.proj_lif1  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
-        self.maxpool1   = abL.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.maxpool1   = abL.MaxPool2d(3, 2, 1)
 
         # stage 2
-        self.proj_conv2 = abL.Conv2d(embed_dims // 4, embed_dims // 2, kernel_size=3, stride=1, padding=1, bias=False)
+        self.proj_conv2 = abL.Conv2d(embed_dims // 4, embed_dims // 2, 3, 1, 1, bias=False)
         self.proj_bn2   = abL.BatchNorm2d(embed_dims // 2)
         self.proj_lif2  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
-        self.maxpool2   = abL.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.maxpool2   = abL.MaxPool2d(3, 2, 1)
 
         # stage 3
-        self.proj_conv3 = abL.Conv2d(embed_dims // 2, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
+        self.proj_conv3 = abL.Conv2d(embed_dims // 2, embed_dims, 3, 1, 1, bias=False)
         self.proj_bn3   = abL.BatchNorm2d(embed_dims)
         self.proj_lif3  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
-        self.maxpool3   = abL.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.maxpool3   = abL.MaxPool2d(3, 2, 1)
 
-        # relative position encoding-like conv
-        self.rpe_conv = abL.Conv2d(embed_dims, embed_dims, kernel_size=3, stride=1, padding=1, bias=False)
+        # relative position conv
+        self.rpe_conv = abL.Conv2d(embed_dims, embed_dims, 3, 1, 1, bias=False)
         self.rpe_bn   = abL.BatchNorm2d(embed_dims)
         self.rpe_lif  = _make_neuron(spike_mode, tau=2.0, step_mode='m')
 
-    def forward(self, x, hook=None):
-        # x: [T, B, C, H, W]
+    def forward(self, x, hook=None, hook_grad: bool=False):
         # stage 0
         x = self.proj_lif(self.proj_bn(self.proj_conv(x)))
-        if hook is not None:
-            hook[self._get_name() + "_lif"] = x.detach()
+        _save_hook(hook, self._get_name()+"_lif", x, hook_grad)
         if self.pooling_stat[0] == "1":
             x = self.maxpool(x)
 
         # stage 1
         x = self.proj_lif1(self.proj_bn1(self.proj_conv1(x)))
-        if hook is not None:
-            hook[self._get_name() + "_lif1"] = x.detach()
+        _save_hook(hook, self._get_name()+"_lif1", x, hook_grad)
         if self.pooling_stat[1] == "1":
             x = self.maxpool1(x)
 
         # stage 2
         x = self.proj_lif2(self.proj_bn2(self.proj_conv2(x)))
-        if hook is not None:
-            hook[self._get_name() + "_lif2"] = x.detach()
+        _save_hook(hook, self._get_name()+"_lif2", x, hook_grad)
         if self.pooling_stat[2] == "1":
             x = self.maxpool2(x)
 
-        # stage 3 (+ residual-ish RPE)
+        # stage 3 (+ RPE)
         x_feat = self.proj_bn3(self.proj_conv3(x))      # no spike yet
         if self.pooling_stat[3] == "1":
             x_feat = self.maxpool3(x_feat)
 
         x = self.proj_lif3(x_feat)
-        if hook is not None:
-            hook[self._get_name() + "_lif3"] = x.detach()
+        _save_hook(hook, self._get_name()+"_lif3", x, hook_grad)
 
-        # simple RPE conv + BN and add
         rpe = self.rpe_bn(self.rpe_conv(x))
         x = x + rpe
 
-        # output spatial size (approximate grid for info; not used downstream here)
-        T, B, C, H, W = x.shape
+        T,B,C,H,W = x.shape
         H_out = H // self.patch_size[0]
         W_out = W // self.patch_size[1]
         return x, (H_out, W_out), hook
 
-
+# ---------- model ----------
 class SpikeDrivenTransformer(nn.Module):
     """
-    Single-stage (flat) stack of MS_Block_Conv blocks.
-    NOTE: `depths` must be an int here (number of blocks in this stage).
+    Single-stage stack of MS_Block_Conv blocks with grad-capable hooks.
     """
     def __init__(self, img_size_h=128, img_size_w=128, patch_size=16, in_channels=2, num_classes=11,
                  embed_dims=512, num_heads=8, mlp_ratios=4, qkv_bias=False, qk_scale=None,
@@ -328,10 +273,7 @@ class SpikeDrivenTransformer(nn.Module):
         self.dvs = dvs_mode
 
         # stochastic depth schedule
-        if self.depths > 0:
-            dpr = [x.item() for x in torch.linspace(0, drop_path_rate, self.depths)]
-        else:
-            dpr = []
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, max(self.depths,1))] if self.depths > 0 else []
 
         # stem / patch embed
         self.patch_embed = MS_SPS(
@@ -344,7 +286,7 @@ class SpikeDrivenTransformer(nn.Module):
             spike_mode=spike_mode,
         )
 
-        # transformer-ish blocks (flat stack)
+        # transformer-like flat stack
         self.block = nn.ModuleList([
             MS_Block_Conv(
                 dim=embed_dims,
@@ -382,41 +324,35 @@ class SpikeDrivenTransformer(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def forward_features(self, x, hook=None):
-        x, _, hook = self.patch_embed(x, hook=hook)
+    def forward_features(self, x, hook=None, hook_grad: bool=False):
+        x, _, hook = self.patch_embed(x, hook=hook, hook_grad=hook_grad)
         for blk in self.block:
-            x, _, hook = blk(x, hook=hook)
+            x, _, hook = blk(x, hook=hook, hook_grad=hook_grad)
         # global average over spatial dims
-        x = x.flatten(3).mean(3)  # [T, B, C]
+        x = x.flatten(3).mean(3)  # [T,B,C]
         return x, hook
 
-    def forward(self, x, hook=None):
+    def forward(self, x, hook=None, hook_grad: bool=False):
         """
         x can be:
-          - [B, C, H, W]  -> we replicate along time to [T, B, C, H, W]
-          - [T, B, C, H, W] (already time-first)
+          - [B,C,H,W] -> replicated to [T,B,C,H,W]
+          - [T,B,C,H,W] (time-first)
         """
         # reset all neuron states for a fresh sample
         abF.reset_net(self)
 
         if x.dim() == 4:
-            # add time dimension and repeat
             x = x.unsqueeze(0).repeat(self.T, 1, 1, 1, 1)
         else:
-            # ensure time-first ordering
-            # if you have [B,T,C,H,W], reorder to [T,B,C,H,W] before calling
             assert x.dim() == 5, f"Expected 4D or 5D input, got {x.shape}"
-            # assume it's already [T,B,C,H,W]
-            pass
 
-        x, hook = self.forward_features(x, hook=hook)
-        x = self.head_lif(x)               # [T, B, C]
-        if hook is not None:
-            hook["head_lif"] = x.detach()
+        x, hook = self.forward_features(x, hook=hook, hook_grad=hook_grad)
+        x = self.head_lif(x)               # [T,B,C]
+        _save_hook(hook, "head_lif", x, hook_grad)
 
-        x = self.head(x)                   # [T, B, num_classes]
+        x = self.head(x)                   # [T,B,num_classes]
         if not self.TET:
-            x = x.mean(0)                  # [B, num_classes]
+            x = x.mean(0)                  # [B,num_classes]
         return x, hook
 
 import re
