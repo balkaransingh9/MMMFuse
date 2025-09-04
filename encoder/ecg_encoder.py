@@ -59,7 +59,7 @@ class ECGSpikingEncoder(nn.Module):
         # return self.readout(z)           # (B, out_dim)
         if return_spikes:
             if return_rates:
-                return z, [s1.mean, s2.mean()]
+                return z, [s1.mean(), s2.mean()]
             else:
                 return z, {"s1":s1, "s2":s2}
         else:
