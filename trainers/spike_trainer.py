@@ -78,7 +78,7 @@ class SpikeTrainer(pl.LightningModule):
 
         loss = self._compute_loss(logits, labels)
         self.log("train_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("sr_loss", loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("sr_loss", sr_loss, on_step=True, on_epoch=True, prog_bar=True)
         return loss+sr_loss
 
     @torch.no_grad()
