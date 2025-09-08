@@ -36,7 +36,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                  text_model_name = 'nlpie/tiny-clinicalbert', 
                  text_max_len = 512, batch_size=64, num_workers=4, 
                  pin_memory=True, prefetch_factor=2, 
-                 persistent_workers=False, multiprocessing_context="forkserver"):
+                 persistent_workers=True, multiprocessing_context="forkserver"):
         
         super().__init__()
         self.listfile = listfile
