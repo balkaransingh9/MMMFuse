@@ -34,7 +34,9 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_ecg = '', lmdb_path_cxr = '',
                  csv_path_demographic = '', csv_path_icd_code = '',
                  text_model_name = 'nlpie/tiny-clinicalbert', 
-                 text_max_len = 512, batch_size=64, num_workers=4):
+                 text_max_len = 512, batch_size=64, num_workers=4, 
+                 pin_memory=True, prefetch_factor=2, 
+                 persistent_workers=False, multiprocessing_context="forkserver"):
         
         super().__init__()
         self.listfile = listfile
@@ -48,6 +50,11 @@ class MultimodalDataModule(pl.LightningDataModule):
         self.lmdb_path_output = lmdb_path_output
         self.lmdb_path_ecg = lmdb_path_ecg
         self.lmdb_path_cxr = lmdb_path_cxr
+
+        self.pin_memory = pin_memory
+        self.prefetch_factor = prefetch_factor
+        self.persistent_workers = persistent_workers
+        self.multiprocessing_context = multiprocessing_context
 
         if task_type == 'phenotype':
             self.task_type = task_type
@@ -164,8 +171,10 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=True,
             num_workers=self.num_workers,
-            pin_memory=True,
-            prefetch_factor=2,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
+            prefetch_factor=self.prefetch_factor,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                         text_tokenizer=self.text_tokenizer,
                                         med_tokenizer=self.med_tokenizer,
@@ -182,8 +191,10 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
-            prefetch_factor=2,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
+            prefetch_factor=self.prefetch_factor,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                         text_tokenizer=self.text_tokenizer,
                                         med_tokenizer=self.med_tokenizer,
@@ -200,7 +211,10 @@ class MultimodalDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
-            pin_memory=True,
+            pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context=self.multiprocessing_context,
+            prefetch_factor=self.prefetch_factor,
             collate_fn=MultimodalCollate(modalities=self.modalities,
                                          text_tokenizer=self.text_tokenizer,
                                          med_tokenizer=self.med_tokenizer,
