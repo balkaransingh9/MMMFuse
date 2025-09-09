@@ -127,9 +127,13 @@ class OutputTokenizer:
             # Forward-fill; leading bins get start_fill = 0.0
             values_ffill = _forward_fill(temp_values, start_fill=0.0)
 
-            out_mat = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            # out_mat = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            # out_mat[:, :F] = values_ffill
+            # out_mat[:, F:] = temp_masks
+
+            out_mat = np.zeros((n_bins, F), dtype=np.float32)
             out_mat[:, :F] = values_ffill
-            out_mat[:, F:] = temp_masks
+            # out_mat[:, F:] = temp_masks
 
             batch_out[i] = out_mat
 

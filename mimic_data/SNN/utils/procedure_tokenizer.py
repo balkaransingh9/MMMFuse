@@ -99,9 +99,12 @@ class ProcedureTokenizer:
                 presence = _forward_fill_binary(presence)
 
             # Pack [presence | mask], with mask == presence (observed-in-bin)
-            out_mat = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            # out_mat = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            # out_mat[:, :F] = presence
+            # out_mat[:, F:] = presence  # same as mask
+
+            out_mat = np.zeros((n_bins, F), dtype=np.float32)
             out_mat[:, :F] = presence
-            out_mat[:, F:] = presence  # same as mask
 
             batch_out[i] = out_mat
 
