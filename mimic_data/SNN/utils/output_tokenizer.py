@@ -76,7 +76,8 @@ class OutputTokenizer:
         F = self.n_features
         n_bins = int(tt_max // duration)
 
-        batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
+        # batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
+        batch_out = np.zeros((B, n_bins, F), dtype=np.float32)
 
         for i, m in enumerate(out):
             if not m:

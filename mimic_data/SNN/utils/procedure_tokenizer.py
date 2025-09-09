@@ -62,7 +62,8 @@ class ProcedureTokenizer:
         n_bins = int(tt_max // duration)
 
         # (B, n_bins, 2*F): [presence | mask]
-        batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
+        # batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
+        batch_out = np.zeros((B, n_bins, F), dtype=np.float32)
 
         for i, m in enumerate(proc):
             if not m or F == 0:
