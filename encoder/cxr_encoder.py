@@ -493,7 +493,7 @@ class SpikeImageFeats(nn.Module):
             feats = self.proj(feats)
         
         if return_spikes:
-            
+
             if return_rates:
                 lif_keys = [k for k in hook if k.endswith('_lif') or 'head_lif' in k]
                 rates = []
@@ -504,3 +504,29 @@ class SpikeImageFeats(nn.Module):
         
         else:
             return feats
+
+def unfreeze_last_blocks(cxr_backbone, n_blocks=1, also_rpe=False):
+    # unfreeze last n MS_Block_Conv
+    for m in list(cxr_backbone.block)[-n_blocks:]:
+        for p in m.parameters():
+            p.requires_grad = True
+
+    # optionally unfreeze relative-position conv
+    if also_rpe:
+        for p in cxr_backbone.patch_embed.rpe_conv.parameters():
+            p.requires_grad = True
+        # keep BN eval to avoid running-stat drift
+        # (weights still train if requires_grad=True, but stats won’t update)
+        cxr_backbone.patch_embed.rpe_bn.eval()
+
+    # keep all other parts frozen
+    for m in list(cxr_backbone.block)[:-n_blocks]:
+        for p in m.parameters():
+            p.requires_grad = False
+
+    # keep stem frozen
+    for p in cxr_backbone.patch_embed.parameters():
+        p.requires_grad = False
+
+    # IMPORTANT: keep BN layers in eval even if params require grad
+    cxr_backbone.eval()
