@@ -131,6 +131,7 @@ class OutputTokenizer:
             # out_mat = np.zeros((n_bins, 2 * F), dtype=np.float32)
             # out_mat[:, :F] = values_ffill
             # out_mat[:, F:] = temp_masks
+            values_ffill = values_ffill*temp_masks
             out_mat = values_ffill.astype(np.float32)
 
             batch_out[i] = out_mat
