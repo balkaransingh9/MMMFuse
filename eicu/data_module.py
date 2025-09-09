@@ -17,7 +17,7 @@ class MultimodalDataModule(pl.LightningDataModule):
                  lmdb_path_vital = '', lmdb_path_lab = '', lmdb_path_medicine = '',
                  csv_path_demographic = '', csv_path_diagnosis = '', csv_path_treatment = '',
                  batch_size=64, num_workers=4, pin_memory=True, prefetch_factor=2, 
-                 persistent_workers=False, multiprocessing_context="forkserver"):
+                 persistent_workers=True, multiprocessing_context=None):
         
         super().__init__()
         self.listfile = listfile
