@@ -142,8 +142,7 @@ class MedTokenizer:
             # out = np.zeros((n_bins, 2 * F), dtype=np.float32)
             # out[:, :F] = values_ffill
             # out[:, F:] = temp_masks
-            out = np.zeros((n_bins, F), dtype=np.float32)
-            out[:, :F] = values_ffill
+            out = values_ffill.astype(np.float32)
 
             batch_out[i] = out
 

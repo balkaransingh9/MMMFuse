@@ -48,8 +48,9 @@ def F_impute(X, tt, mask, duration=1, tt_max=48):
     # out[:, :n_feat] = temp_values
     # out[:, n_feat:] = temp_masks
 
-    out = np.zeros((n_bins, n_feat), dtype=np.float32)
-    out[:, :n_feat] = temp_values
+    # out = np.zeros((n_bins, n_feat), dtype=np.float32)
+    # out[:, :n_feat] = temp_values
+    out = temp_values.astype(np.float32)
     return out
 
 
