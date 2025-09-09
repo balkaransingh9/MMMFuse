@@ -83,8 +83,7 @@ class MedTokenizer:
         n_bins = int(tt_max // duration)
 
         # Prepare output container
-        # batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
-        batch_out = np.zeros((B, n_bins, F), dtype=np.float32)
+        batch_out = np.zeros((B, n_bins, 2 * F), dtype=np.float32)
 
         for i, m in enumerate(meds):
             if not m:
@@ -140,11 +139,9 @@ class MedTokenizer:
             values_ffill = _forward_fill(temp_values, start_fill=0.0)
 
             # Pack [values | masks]
-            # out = np.zeros((n_bins, 2 * F), dtype=np.float32)
-            # out[:, :F] = values_ffill
-            # out[:, F:] = temp_masks
-            values_ffill = values_ffill*temp_masks
-            out = values_ffill.astype(np.float32)
+            out = np.zeros((n_bins, 2 * F), dtype=np.float32)
+            out[:, :F] = values_ffill
+            out[:, F:] = temp_masks
 
             batch_out[i] = out
 
