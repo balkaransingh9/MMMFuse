@@ -206,7 +206,8 @@ class MultimodalData(Dataset):
         raw = self.demographic_file.loc[stay_id]
         if hasattr(raw, "isna") and raw.isna().all():
             return None, True
-        return torch.tensor(raw.values, dtype=torch.float32), False
+        # return torch.tensor(raw.values, dtype=torch.float32), False
+        return raw, False
 
     def _load_icd_code(self, idx):
         if self.icd_code_file is None:

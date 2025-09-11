@@ -110,6 +110,8 @@ class VitalTokenizer:
             'GCS - Motor Response',
             'Temperature Celsius',
         ]
+        
+        self.feature_names = self.expected_cols + [f"{n}_mask" for n in self.expected_cols]
         self.n_features = len(self.expected_cols)
         self.label2idx = {lbl: i for i, lbl in enumerate(self.expected_cols)}
         self._numeric_keys = set(self.value_norm.keys())
@@ -196,5 +198,6 @@ class VitalTokenizer:
 
         reg_ts = np.stack(reg_list, axis=0)  # (B, 48, F*2)
         return {
-            'values': torch.from_numpy(reg_ts)
+            'values': torch.from_numpy(reg_ts),
+            'feature_names': self.feature_names
         }

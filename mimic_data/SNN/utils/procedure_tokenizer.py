@@ -45,6 +45,7 @@ class ProcedureTokenizer:
         self.labels_ordered = [k for k, _ in items]
         self.label2col = {lbl: i for i, lbl in enumerate(self.labels_ordered)}
         self.n_features = len(self.labels_ordered)
+        self.feature_names = self.labels_ordered
 
     def tokenize(self, proc, tt_max: int = 48, duration: int = 1, ff_presence: bool = False):
         """
@@ -108,5 +109,6 @@ class ProcedureTokenizer:
             batch_out[i] = out_mat
 
         return {
-            'values': torch.from_numpy(batch_out)  # (B, n_bins, 2*F)
+            'values': torch.from_numpy(batch_out),  # (B, n_bins, 2*F)
+            'feature_names': self.feature_names
         }
