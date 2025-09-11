@@ -64,6 +64,7 @@ class MultimodalCollate:
         outs_list, flags_list, labels_list = zip(*batch)
 
         seq_data = {}
+        seq_data.setdefault('demographic', {})
 
         # Demographics
         if 'demographic' in self.modalities:
