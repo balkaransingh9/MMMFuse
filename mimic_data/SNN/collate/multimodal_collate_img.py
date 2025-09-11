@@ -67,10 +67,10 @@ class MultimodalCollate:
 
         # Demographics
         if 'demographic' in self.modalities:
-            demo = [torch(o['demographic'].values, dtype=torch.float32) for o in outs_list]
-            col_names = outs_list[0]['demographic'].columns
-            seq_data['demographic'] = torch.stack(demo, dim=0)
-            seq_data['feature_names'] = torch.tensor(col_names)
+            demo = [torch.tensor(o['demographic'].values, dtype=torch.float32) for o in outs_list]
+            col_names = outs_list[0]['demographic'].index
+            seq_data['demographic']['values'] = torch.stack(demo, dim=0)
+            seq_data['demographic']['feature_names'] = list(col_names)
 
         # ICD codes
         if 'icd_code' in self.modalities:
