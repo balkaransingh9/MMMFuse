@@ -65,7 +65,7 @@ class MedTokenizer:
         self.label2col = {lbl: i for i, lbl in enumerate(self.labels_ordered)}
         self.n_features = len(self.labels_ordered)
 
-        self.feature_names = self.labels_ordered + [f"{n}_mask" for n in self.labels_ordered]
+        self.feature_names = self.labels_ordered + [f"{n} (Missing Mask)" for n in self.labels_ordered]
 
         self._val_mean = float(self.mednorm.get('value', {}).get('mean', 0.0))
         self._val_std  = float(self.mednorm.get('value', {}).get('std',  1.0))

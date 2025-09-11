@@ -111,7 +111,7 @@ class VitalTokenizer:
             'Temperature Celsius',
         ]
         
-        self.feature_names = self.expected_cols + [f"{n}_mask" for n in self.expected_cols]
+        self.feature_names = self.expected_cols + [f"{n} (Missing Mask)" for n in self.expected_cols]
         self.n_features = len(self.expected_cols)
         self.label2idx = {lbl: i for i, lbl in enumerate(self.expected_cols)}
         self._numeric_keys = set(self.value_norm.keys())
